@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DSV Transportation Quotation</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
@@ -10,17 +10,11 @@
 <body>
   <section class="quote-section">
     <div class="quote-card">
-      <!-- Logo INSIDE the padding area of .quote-section -->
-      <img
-        src="{{ url_for('static', filename='dsv_logo.png') }}"
-        alt="DSV Logo"
-        class="dsv-logo"
-      />
-
+      <!-- Header -->
       <h1>Transportation Quotation</h1>
 
       <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From / To side-by-side -->
+        <!-- From & To -->
         <div class="form-row">
           <div class="form-group">
             <label for="origin">From</label>
@@ -43,13 +37,14 @@
           </select>
         </div>
 
-        <!-- Extra Stop if needed -->
-        <div id="extra-destination" class="form-group" style="display:none;">
-          <label for="destination2">Additional Stop</label>
-          <input type="text" id="destination2" name="destination2" placeholder="Next city" />
+        <!-- Multiple stops container -->
+        <div id="stops-container" class="form-group" style="display:none;">
+          <label>Additional Cities</label>
+          <div id="stops-list"></div>
+          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
         </div>
 
-        <!-- Truck Type (with extras) -->
+        <!-- Truck Type -->
         <div class="form-group">
           <label for="truck_type">Truck Type</label>
           <select id="truck_type" name="truck_type" required>
@@ -74,7 +69,7 @@
           </select>
         </div>
 
-        <!-- CICPA -->
+        <!-- CICPA Pass -->
         <div class="form-group">
           <label for="cicpa">CICPA Pass Required?</label>
           <select id="cicpa" name="cicpa" required>
@@ -83,22 +78,45 @@
           </select>
         </div>
 
-        <!-- Generate -->
+        <!-- Generate button -->
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
   </section>
 
-  <!-- Chat toggle -->
+  <!-- Chat widget toggle -->
   <button class="chat-toggle">
     <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
   <script>
-    // show/hide extra stop
-    document.getElementById("trip_type").addEventListener("change", function() {
-      document.getElementById("extra-destination").style.display =
-        this.value === "multi_stop" ? "block" : "none";
+    // Show/hide stops container
+    const trip = document.getElementById('trip_type');
+    const stopsContainer = document.getElementById('stops-container');
+    trip.addEventListener('change', () => {
+      stopsContainer.style.display = trip.value === 'multi_stop' ? 'block' : 'none';
+      if (trip.value !== 'multi_stop') {
+        document.getElementById('stops-list').innerHTML = '';
+        stopCount = 0;
+      }
+    });
+
+    // Dynamic addition of city fields
+    let stopCount = 0;
+    document.getElementById('add-stop').addEventListener('click', () => {
+      stopCount++;
+      const stopsList = document.getElementById('stops-list');
+      const div = document.createElement('div');
+      div.className = 'form-group';
+      const label = document.createElement('label');
+      label.textContent = `City ${stopCount+1}`;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = `destination${stopCount+1}`;
+      input.placeholder = `City ${stopCount+1}`;
+      input.required = true;
+      div.append(label, input);
+      stopsList.appendChild(div);
     });
   </script>
 </body>
