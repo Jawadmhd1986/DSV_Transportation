@@ -1,7 +1,8 @@
+import os
+import io
+from datetime import date
 from flask import Flask, render_template, request, send_file
 from docxtpl import DocxTemplate
-from datetime import date
-import io
 
 app = Flask(__name__)
 
@@ -23,7 +24,6 @@ def generate_transport():
     email       = request.form.get("email", "")
 
     # 2. TODO: Replace with your rate‐calculation logic
-    #    e.g. lookup in a dict or DB based on truck_type, cargo_type, cicpa_pass, etc.
     unit_rate = 123.45       # placeholder
     total_fee = unit_rate    # placeholder
 
@@ -35,7 +35,7 @@ def generate_transport():
         "DESTINATION":   destination,
         "TRIP_TYPE":     trip_type.replace("_", " ").title(),
         "TRUCK_TYPE":    truck_type.replace("_", " ").title(),
-        "CARGO_TYPE":    "Chemical Load" if cargo_type=="chemical" else "General Cargo",
+        "CARGO_TYPE":    "Chemical Load" if cargo_type == "chemical" else "General Cargo",
         "CICPA_PASS":    "Yes" if cicpa_pass else "No",
         "UNIT_RATE":     f"{unit_rate:.2f} AED",
         "TOTAL_FEE":     f"{total_fee:.2f} AED"
@@ -50,13 +50,12 @@ def generate_transport():
         doc_io,
         as_attachment=True,
         download_name="DSV_Transport_Quotation.docx",
-        mimetype=(
-          "application/"
-          "vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
 
 if __name__ == "__main__":
-    # dev server; in production use your Procfile + gunicorn
-    app.run(debug=True)
+    # Bind to 0.0.0.0 on the port Render provides (or 5000 locally)
+    port = int(os.environ.get("PORT", 5000))
+    debug_mode = (os.environ.get("FLASK_ENV") == "development")
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
