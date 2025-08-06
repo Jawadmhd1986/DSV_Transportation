@@ -6,31 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DSV Transportation Quotation</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
-  <style>
-    .form-row {
-      display: flex;
-      gap: 1rem;
-    }
-    .form-row .form-group {
-      flex: 1;
-    }
-  </style>
 </head>
 <body>
   <section class="quote-section">
     <div class="quote-card">
-      <!-- Logo INSIDE the card -->
+      <!-- Logo INSIDE the padding area of .quote-section -->
       <img
         src="{{ url_for('static', filename='dsv_logo.png') }}"
         alt="DSV Logo"
-        class="logo"
+        class="dsv-logo"
       />
 
-      <!-- Header -->
       <h1>Transportation Quotation</h1>
 
       <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From & To side by side -->
+        <!-- From / To side-by-side -->
         <div class="form-row">
           <div class="form-group">
             <label for="origin">From</label>
@@ -53,13 +43,13 @@
           </select>
         </div>
 
-        <!-- Extra destination for multi-stop -->
+        <!-- Extra Stop if needed -->
         <div id="extra-destination" class="form-group" style="display:none;">
           <label for="destination2">Additional Stop</label>
           <input type="text" id="destination2" name="destination2" placeholder="Next city" />
         </div>
 
-        <!-- Truck Type -->
+        <!-- Truck Type (with extras) -->
         <div class="form-group">
           <label for="truck_type">Truck Type</label>
           <select id="truck_type" name="truck_type" required>
@@ -84,7 +74,7 @@
           </select>
         </div>
 
-        <!-- CICPA Pass -->
+        <!-- CICPA -->
         <div class="form-group">
           <label for="cicpa">CICPA Pass Required?</label>
           <select id="cicpa" name="cicpa" required>
@@ -93,24 +83,22 @@
           </select>
         </div>
 
-        <!-- Generate button -->
+        <!-- Generate -->
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
   </section>
 
-  <!-- Chat widget toggle OUTSIDE the quote-card -->
+  <!-- Chat toggle -->
   <button class="chat-toggle">
     <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
-
-  <!-- Show/hide extra destination -->
   <script>
+    // show/hide extra stop
     document.getElementById("trip_type").addEventListener("change", function() {
-      document
-        .getElementById("extra-destination")
-        .style.display = (this.value === "multi_stop" ? "block" : "none");
+      document.getElementById("extra-destination").style.display =
+        this.value === "multi_stop" ? "block" : "none";
     });
   </script>
 </body>
