@@ -6,9 +6,11 @@ from docxtpl import DocxTemplate
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def index():
     return render_template("transport_form.html")
+
 
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
@@ -51,9 +53,9 @@ def generate_transport():
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
+
 if __name__ == "__main__":
-    # Bind to 0.0.0.0 on the port Render provides (or 5000 locally)
-    # Use `or 5000` so empty PORT="" still falls back
-    port = int(os.environ.get("PORT") or 5000)
+    # Use Render’s port (or 10000 fallback), bind on all interfaces
+    port = int(os.environ.get("PORT") or 10000)
     debug_mode = (os.environ.get("FLASK_ENV") == "development")
     app.run(host="0.0.0.0", port=port, debug=debug_mode)
