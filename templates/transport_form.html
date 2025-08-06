@@ -60,7 +60,7 @@
           </div>
         </div>
 
-        <!-- Additional Cities (dynamically add/remove) -->
+        <!-- Additional Cities -->
         <div id="stops-container" style="display:none;">
           <label>Additional Cities</label>
           <div id="stops-list"></div>
@@ -101,53 +101,43 @@
           </select>
         </div>
 
-        <!-- Generate -->
+        <!-- Generate button -->
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
   </section>
 
-  <!-- Chat toggle & chat box -->
+  <!-- Chat toggle -->
   <button class="chat-toggle">
     <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
-  <div class="chat-box">
+
+  <!-- Chat box with the exact IDs chatbot.js expects -->
+  <div id="chat-box" class="chat-box">
     <div class="chat-header">
       <span>DSV Chat</span>
-      <button class="chat-close">&times;</button>
+      <button id="chat-close">&times;</button>
     </div>
-    <div class="chat-messages"></div>
-    <form class="chat-footer">
-      <input type="text" placeholder="Type a message…" required />
-      <button type="submit">Send</button>
-    </form>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-footer">
+      <input
+        type="text"
+        id="chat-input"
+        placeholder="Type a message…"
+      />
+      <button id="chat-send" type="button">Send</button>
+    </div>
   </div>
 
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
   <script>
-    // Chat open/close & Enter-to-send
-    const chatBox = document.querySelector('.chat-box');
-    document.querySelector('.chat-toggle').addEventListener('click', () => {
-      chatBox.classList.toggle('open');
-      document.querySelector('.chat-footer input').focus();
-    });
-    document.querySelector('.chat-close').addEventListener('click', () => {
-      chatBox.classList.remove('open');
-    });
-    const chatForm = document.querySelector('.chat-footer');
-    chatForm.addEventListener('submit', e => {
-      e.preventDefault();
-      // trigger existing send logic in chatbot.js
-      chatForm.querySelector('button').click();
-      chatForm.querySelector('input').value = '';
-    });
-
     // Multi-stop dynamic fields
     const tripRadios = document.getElementsByName('trip_type');
     const stopsContainer = document.getElementById('stops-container');
     const stopsList = document.getElementById('stops-list');
     let stopCount = 0;
-    Array.from(tripRadios).forEach(radio => {
+
+    tripRadios.forEach(radio => {
       radio.addEventListener('change', () => {
         if (radio.value === 'multi_stop') {
           stopsContainer.style.display = 'block';
@@ -159,6 +149,7 @@
         }
       });
     });
+
     function addStop() {
       stopCount++;
       const group = document.createElement('div');
