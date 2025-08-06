@@ -14,8 +14,9 @@ body {
   margin: 0;
   font-family: Arial, sans-serif;
   background: var(--grey-bg);
-  height: calc(var(--vh, 1vh) * 100); /* 👈 fix mobile 100vh bug */
-  overflow: hidden;
+  height: calc(var(--vh, 1vh) * 100); /* fix mobile 100vh bug */
+  /* allow vertical scroll */
+  overflow-y: auto;
 }
 
 /* Full-screen blue background with extra top padding for logo */
@@ -96,11 +97,12 @@ body {
   background: var(--blue-dsv-light);
 }
 
-/* Chat toggle button */
+/* Chat toggle button: fixed & on top */
 .chat-toggle {
-  position: absolute;
+  position: fixed;
   bottom: 2.5rem;
   right: 2rem;
+  z-index: 2000;               /* above the card */
   background: var(--white);
   border: none;
   padding: 0.5rem;
@@ -120,7 +122,7 @@ body {
   right: 2rem;
   width: 300px;
   max-width: 90%;
-  max-height: 70vh;              /* cap height at 70% of viewport */
+  max-height: 70vh;
   background: var(--white);
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.2);
@@ -224,13 +226,9 @@ body {
     right: 5%;
   }
 
-  /* 🟦 Add this block: */
   .chat-toggle {
-    bottom: env(safe-area-inset-bottom, 1.8rem); /* raise above iPhone home bar */
+    bottom: env(safe-area-inset-bottom, 1.8rem);
     right: 1rem;
     z-index: 2000;
   }
 }
-
-
-
