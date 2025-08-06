@@ -9,29 +9,27 @@
 *, *::before, *::after {
   box-sizing: border-box;
 }
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;              /* NO scrolling */
   font-family: Arial, sans-serif;
-  /* grey behind only shows if .quote-section ever shrinks */
-  background: #f0f0f0;
-  height: 100vh;
-  overflow-y: auto;
+  background: var(--blue-dsv);
 }
 
-/* 100vh of DSV blue, card pinned below logo */
+/* Blue background wrapper */
 .quote-section {
   position: relative;
   width: 100%;
-  min-height: 100vh;
-  background: var(--blue-dsv);
+  height: 100%;                  /* fill viewport */
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 8rem 1rem 2rem; /* leave room for logo up top */
-  overflow-y: auto;
+  align-items: flex-start;       /* start from top */
+  padding: 6rem 1rem 2rem;       /* room for logo */
 }
 
-/* Logo sits above the card */
+/* Logo above card */
 .dsv-logo {
   position: absolute;
   top: 1rem;
@@ -41,19 +39,19 @@ body {
   z-index: 2;
 }
 
-/* White card immediately under logo */
+/* White card */
 .quote-card {
   position: relative;
   background: var(--white);
   border-radius: 12px;
-  padding: 2rem 1.5rem;
+  padding: 1.5rem;
   width: 100%;
   max-width: 450px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.2);
   z-index: 1;
 }
 
-/* Heading */
+/* Header */
 .quote-card h1 {
   margin-top: 0;
   margin-bottom: 1.5rem;
@@ -62,7 +60,7 @@ body {
   text-align: center;
 }
 
-/* Form fields */
+/* Labels & inputs */
 .quote-card label {
   display: block;
   margin: 0.75rem 0 0.25rem;
@@ -84,13 +82,30 @@ body {
   box-shadow: 0 0 0 3px rgba(0,56,155,0.3);
 }
 
-/* Side-by-side row helper */
+/* Side-by-side row */
 .form-row {
   display: flex;
   gap: 1rem;
 }
 .form-row .form-group {
   flex: 1;
+}
+
+/* Add City button */
+.btn-add {
+  margin-top: 0.5rem;
+  background: none;
+  border: 1px dashed var(--blue-dsv);
+  color: var(--blue-dsv);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.btn-add:hover {
+  background: var(--blue-dsv-light);
+  color: var(--white);
+  border-color: var(--blue-dsv-light);
 }
 
 /* Generate button */
@@ -111,12 +126,12 @@ body {
   background: var(--blue-dsv-light);
 }
 
-/* Chat toggle always on top */
+/* Chat toggle */
 .chat-toggle {
   position: fixed;
   bottom: 2.5rem;
   right: 2rem;
-  z-index: 1000;
+  z-index: 2000;
   background: var(--white);
   border: none;
   padding: 0.5rem;
@@ -132,14 +147,13 @@ body {
 /* Mobile tweaks */
 @media (max-width: 480px) {
   .quote-section {
-    padding: 6rem 1rem 1rem;
+    padding: 5rem 1rem 1rem;
   }
   .dsv-logo {
     width: 120px;
-    top: 1.7rem;
   }
   .quote-card {
-    padding: 2rem 1rem;
+    padding: 1rem;
     max-width: 320px;
   }
   .btn-generate {
