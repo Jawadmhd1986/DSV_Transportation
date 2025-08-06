@@ -1,19 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  …
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DSV Transportation Quotation Generator</title>
+
+  <!-- Your main CSS -->
+  <link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='styles.css') }}"
+  />
+
+  <!-- Override to allow scrolling if needed -->
+  <style>
+    body { overflow-y: auto !important; }
+  </style>
 </head>
 <body>
   <section class="quote-section">
-    <!-- Logo floats at top via .dsv-logo -->
+    <!-- Blue background + logo -->
     <img
       src="{{ url_for('static', filename='dsv_logo.png') }}"
       alt="DSV Logo"
       class="dsv-logo"
     />
 
-    <!-- White card with your form -->
+    <!-- White card with form -->
     <div class="quote-card">
       <h1>Transportation Quotation Generator</h1>
 
@@ -23,10 +36,22 @@
       >
         <!-- From / To -->
         <label for="origin">From</label>
-        <input type="text" id="origin" name="origin" required />
+        <input
+          type="text"
+          id="origin"
+          name="origin"
+          placeholder="Origin city"
+          required
+        />
 
         <label for="destination">To</label>
-        <input type="text" id="destination" name="destination" required />
+        <input
+          type="text"
+          id="destination"
+          name="destination"
+          placeholder="Destination city"
+          required
+        />
 
         <!-- Trip Type -->
         <label for="trip_type">Trip Type</label>
@@ -64,17 +89,27 @@
 
         <!-- Optional Email -->
         <label for="email">Recipient Email (optional)</label>
-        <input type="email" id="email" name="email" />
+        <input
+          type="email"
+          id="email"
+          name="email"
+          placeholder="Email address"
+        />
 
         <!-- Generate button -->
-        <button type="submit" class="btn-generate">Generate</button>
+        <button type="submit" class="btn-generate">
+          Generate
+        </button>
       </form>
     </div>
   </section>
 
-  <!-- Chat widget toggle stays the same -->
+  <!-- Chat widget toggle -->
   <button class="chat-toggle">
-    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
+    <img
+      src="{{ url_for('static', filename='chat-icon.png') }}"
+      alt="Chat"
+    />
   </button>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 </body>
