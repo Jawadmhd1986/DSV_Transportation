@@ -20,7 +20,7 @@
       <h1>Transportation Quotation</h1>
 
       <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From & To -->
+        <!-- From / To -->
         <div class="form-row">
           <div class="form-group">
             <label for="origin">From</label>
@@ -44,35 +44,32 @@
           </div>
         </div>
 
-        <!-- Trip Type radios -->
+        <!-- Trip Type (slicers) -->
         <div class="form-group">
           <label>Trip Type</label>
           <div class="trip-options">
             <label>
-              <input type="radio" name="trip_type" value="one_way" required />One Way
+              <input type="radio" name="trip_type" value="one_way" required />
+              <span>One Way</span>
             </label>
             <label>
-              <input type="radio" name="trip_type" value="return" />Return
+              <input type="radio" name="trip_type" value="return" />
+              <span>Return</span>
             </label>
             <label>
-              <input
-                type="radio"
-                name="trip_type"
-                value="multi_stop"
-              />Multiple Stops
+              <input type="radio" name="trip_type" value="multi_stop" />
+              <span>Multiple Stops</span>
             </label>
           </div>
         </div>
 
         <!-- Additional Cities -->
-        <div id="stops-container" style="display:none;">
+        <div id="stops-container" class="form-group" style="display:none;">
           <label>Additional Cities</label>
           <div id="stops-list"></div>
-          <button
-            type="button"
-            id="add-stop"
-            class="btn-add"
-          >+ Add City</button>
+          <button type="button" id="add-stop" class="btn-add">
+            + Add City
+          </button>
         </div>
 
         <!-- Truck Type -->
@@ -100,7 +97,7 @@
           </select>
         </div>
 
-        <!-- CICPA Pass -->
+        <!-- CICPA -->
         <div class="form-group">
           <label for="cicpa">CICPA Pass Required?</label>
           <select id="cicpa" name="cicpa" required>
@@ -109,7 +106,6 @@
           </select>
         </div>
 
-        <!-- Generate -->
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
@@ -117,10 +113,7 @@
 
   <!-- Chat toggle -->
   <button class="chat-toggle">
-    <img
-      src="{{ url_for('static', filename='chat-icon.png') }}"
-      alt="Chat"
-    />
+    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
 
   <!-- Chat box -->
@@ -140,72 +133,55 @@
     </div>
   </div>
 
+  <!-- Chatbot script (uses your existing chatbot.js) -->
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
+
+  <!-- Dynamic “add/remove city” + slicer logic -->
   <script>
-    // Dynamic stops
-    const tripRadios = document.getElementsByName("trip_type");
-    const stopsContainer = document.getElementById("stops-container");
-    const stopsList = document.getElementById("stops-list");
-    let stopCount = 0;
+    document.addEventListener('DOMContentLoaded', () => {
+      const tripRadios     = document.querySelectorAll('input[name="trip_type"]');
+      const stopsContainer = document.getElementById('stops-container');
+      const stopsList      = document.getElementById('stops-list');
+      let stopCount        = 0;
 
-    Array.from(tripRadios).forEach((radio) => {
-      radio.addEventListener("change", () => {
-        if (radio.value === "multi_stop") {
-          stopsContainer.style.display = "block";
-          if (!stopCount) addStop();
-        } else {
-          stopsContainer.style.display = "none";
-          stopsList.innerHTML = "";
-          stopCount = 0;
-        }
+      tripRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+          // highlight selected slicer
+          tripRadios.forEach(r => r.closest('label').classList.remove('selected'));
+          radio.closest('label').classList.add('selected');
+
+          // show/hide additional cities
+          if (radio.value === 'multi_stop') {
+            stopsContainer.style.display = 'block';
+            if (!stopCount) addStop();
+          } else {
+            stopsContainer.style.display = 'none';
+            stopsList.innerHTML = '';
+            stopCount = 0;
+          }
+        });
       });
-    });
 
-    function addStop() {
-      stopCount++;
-      const group = document.createElement("div");
-      group.className = "form-group";
-      const label = document.createElement("label");
-      label.textContent = `City ${stopCount + 1}`;
-      const input = document.createElement("input");
-      input.type = "text";
-      input.name = `destination${stopCount + 1}`;
-      input.placeholder = `City ${stopCount + 1}`;
-      input.required = true;
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.textContent = "Remove";
-      remove.className = "btn-remove";
-      remove.addEventListener("click", () => {
-        stopsList.removeChild(group);
-      });
-      group.append(label, input, remove);
-      stopsList.appendChild(group);
-    }
-    document.getElementById("add-stop").addEventListener("click", addStop);
+      document.getElementById('add-stop').addEventListener('click', addStop);
 
-    // Chat open/close
-    const chatBox = document.getElementById("chat-box");
-    document.querySelector(".chat-toggle").addEventListener("click", () => {
-      chatBox.classList.toggle("open");
-      document.getElementById("chat-input").focus();
-    });
-    document.getElementById("chat-close").addEventListener("click", () => {
-      chatBox.classList.remove("open");
-    });
-
-    // Send on Enter or click
-    const chatInput = document.getElementById("chat-input");
-    const chatSend = document.getElementById("chat-send");
-    function sendMessage() {
-      // This function is defined in chatbot.js
-      chatSend.dispatchEvent(new Event("click"));
-    }
-    chatSend.addEventListener("click", () => {});
-    chatInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        sendMessage();
+      function addStop() {
+        stopCount++;
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        const label = document.createElement('label');
+        label.textContent = `City ${stopCount + 1}`;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = `destination${stopCount + 1}`;
+        input.placeholder = `City ${stopCount + 1}`;
+        input.required = true;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Remove';
+        remove.className = 'btn-remove';
+        remove.addEventListener('click', () => stopsList.removeChild(group));
+        group.append(label, input, remove);
+        stopsList.appendChild(group);
       }
     });
   </script>
