@@ -11,7 +11,7 @@
 }
 html, body {
   margin: 0; padding: 0;
-  height: 100%; overflow: hidden;
+  height: 100%; overflow: hidden; /* lock viewport */
   font-family: Arial, sans-serif;
   background: var(--blue-dsv);
 }
@@ -20,19 +20,23 @@ html, body {
 .quote-section {
   position: relative;
   width: 100%; height: 100%;
-  display: flex; justify-content: center; align-items: flex-start;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
   padding: 6rem 1rem 2rem;
 }
 
-/* Logo above the card */
+/* DSV logo pinned above the card */
 .dsv-logo {
   position: absolute;
-  top: 1rem; left: 50%;
+  top: 1rem;
+  left: 50%;
   transform: translateX(-50%);
-  width: 140px; z-index: 2;
+  width: 140px;
+  z-index: 2;
 }
 
-/* White card */
+/* White form card */
 .quote-card {
   position: relative;
   background: var(--white);
@@ -76,19 +80,30 @@ html, body {
 }
 
 /* Side-by-side row */
-.form-row { display: flex; gap: 1rem; }
-.form-row .form-group { flex: 1; }
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+.form-row .form-group {
+  flex: 1;
+}
 
 /* Trip Type radios */
 .trip-options {
-  display: flex; gap: 1rem; margin-bottom: 1rem;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 .trip-options label {
-  display: flex; align-items: center; font-weight: normal;
+  display: flex;
+  align-items: center;
+  font-weight: normal;
 }
-.trip-options input { margin-right: 0.25rem; }
+.trip-options input {
+  margin-right: 0.25rem;
+}
 
-/* Add / Remove Cities */
+/* Add / Remove city buttons */
 .btn-add {
   margin: 0.5rem 0;
   background: none;
@@ -113,7 +128,9 @@ html, body {
   margin-top: -2.6rem;
   cursor: pointer;
 }
-.btn-remove:hover { background: #ccc; }
+.btn-remove:hover {
+  background: #ccc;
+}
 
 /* Generate button */
 .btn-generate {
@@ -129,12 +146,15 @@ html, body {
   cursor: pointer;
   transition: background 0.2s;
 }
-.btn-generate:hover { background: var(--blue-dsv-light); }
+.btn-generate:hover {
+  background: var(--blue-dsv-light);
+}
 
-/* Chat toggle */
+/* Chat toggle button */
 .chat-toggle {
   position: fixed;
-  bottom: 2.5rem; right: 2rem;
+  bottom: 2.5rem;
+  right: 2rem;
   z-index: 3000;
   background: var(--white);
   border: none;
@@ -143,58 +163,117 @@ html, body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   cursor: pointer;
 }
-.chat-toggle img { width: 36px; height: 36px; }
+.chat-toggle img {
+  width: 36px;
+  height: 36px;
+}
 
 /* Chat box */
 #chat-box {
   position: fixed;
-  bottom: 6rem; right: 2rem;
-  width: 300px; max-width: 90%; max-height: 70vh;
+  bottom: 6rem;
+  right: 2rem;
+  width: 300px;
+  max-width: 90%;
+  max-height: 70vh;
   background: var(--white);
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.2);
   transform: translateY(200%);
   transition: transform 0.3s ease;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   z-index: 2999;
 }
-#chat-box.open { transform: translateY(0); }
+#chat-box.open {
+  transform: translateY(0);
+}
+
+/* Chat header */
 #chat-box .chat-header {
   background: var(--blue-dsv);
   color: var(--white);
   padding: 0.8rem 1rem;
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-weight: bold;
 }
 #chat-box .chat-header button {
-  background: none; border: none; color: var(--white);
-  font-size: 1.2rem; cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--white);
+  font-size: 1.2rem;
+  cursor: pointer;
 }
-#chat-box #chat-messages {
-  flex: 1; padding: 0.75rem 1rem;
-  background: #f9f9f9; overflow-y: auto;
+
+/* Chat messages and bubbles */
+#chat-messages {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: #f9f9f9;
+  overflow-y: auto;
 }
-#chat-box .chat-footer {
-  display: flex; border-top: 1px solid #ccc;
+.message {
+  margin-bottom: 0.6rem;
+  clear: both;
 }
-#chat-box #chat-input {
-  flex: 1; padding: 0.6rem; border: none; font-size: 1rem;
+.message.user .bubble {
+  background: var(--blue-dsv);
+  color: var(--white);
+  padding: 0.4rem 0.8rem;
+  border-radius: 16px 16px 4px 16px;
+  float: right;
+  max-width: 80%;
 }
-#chat-box #chat-send {
-  background: var(--blue-dsv); color: var(--white);
-  border: none; padding: 0 1rem; cursor: pointer;
+.message.bot .bubble {
+  background: #e2e2e2;
+  color: #000;
+  padding: 0.4rem 0.8rem;
+  border-radius: 16px 16px 16px 4px;
+  float: left;
+  max-width: 80%;
+}
+
+/* Chat footer */
+.chat-footer {
+  display: flex;
+  border-top: 1px solid #ccc;
+}
+#chat-input {
+  flex: 1;
+  padding: 0.6rem;
+  border: none;
+  font-size: 1rem;
+}
+#chat-send {
+  background: var(--blue-dsv);
+  color: var(--white);
+  border: none;
+  padding: 0 1rem;
+  cursor: pointer;
   transition: background 0.2s;
 }
-#chat-box #chat-send:hover { background: var(--blue-dsv-light); }
+#chat-send:hover {
+  background: var(--blue-dsv-light);
+}
 
 /* Mobile tweaks */
 @media (max-width: 480px) {
-  .dsv-logo { width: 120px; }
-  .quote-card { padding: 1rem; max-width: 320px; }
-  .btn-generate { font-size: 1rem; padding: 0.8rem; }
+  .dsv-logo {
+    width: 120px;
+  }
+  .quote-card {
+    padding: 1rem;
+    max-width: 320px;
+  }
+  .btn-generate {
+    font-size: 1rem;
+    padding: 0.8rem;
+  }
   .chat-toggle {
-    bottom: env(safe-area-inset-bottom,1.8rem);
+    bottom: env(safe-area-inset-bottom, 1.8rem);
     right: 1rem;
   }
 }
