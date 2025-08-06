@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <!-- Blue header + logo -->
+  <!-- Logo above card -->
   <img
     src="{{ url_for('static', filename='dsv_logo.png') }}"
     alt="DSV Logo"
@@ -20,34 +20,64 @@
       <h1>Transportation Quotation</h1>
 
       <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From & To side-by-side -->
+        <!-- From & To -->
         <div class="form-row">
           <div class="form-group">
             <label for="origin">From</label>
-            <input type="text" id="origin" name="origin" placeholder="Origin city" required />
+            <input
+              type="text"
+              id="origin"
+              name="origin"
+              placeholder="Origin city"
+              required
+            />
           </div>
           <div class="form-group">
             <label for="destination">To</label>
-            <input type="text" id="destination" name="destination" placeholder="Destination city" required />
+            <input
+              type="text"
+              id="destination"
+              name="destination"
+              placeholder="Destination city"
+              required
+            />
           </div>
         </div>
 
-        <!-- Trip Type -->
+        <!-- Trip Type as radios -->
         <div class="form-group">
-          <label for="trip_type">Trip Type</label>
-          <select id="trip_type" name="trip_type" required>
-            <option value="">— Select —</option>
-            <option value="one_way">One Way</option>
-            <option value="return">Return Trip</option>
-            <option value="multi_stop">Multiple Stops</option>
-          </select>
+          <label>Trip Type</label>
+          <div class="trip-options">
+            <label>
+              <input
+                type="radio"
+                name="trip_type"
+                value="one_way"
+                required
+              />One Way
+            </label>
+            <label>
+              <input type="radio" name="trip_type" value="return" />Return
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="trip_type"
+                value="multi_stop"
+              />Multiple Stops
+            </label>
+          </div>
         </div>
 
-        <!-- Additional Cities (dynamic) -->
+        <!-- Additional Cities -->
         <div id="stops-container" style="display:none;">
           <label>Additional Cities</label>
           <div id="stops-list"></div>
-          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
+          <button
+            type="button"
+            id="add-stop"
+            class="btn-add"
+          >+ Add City</button>
         </div>
 
         <!-- Truck Type -->
@@ -84,14 +114,20 @@
           </select>
         </div>
 
-        <button type="submit" class="btn-generate">Generate</button>
+        <!-- Generate -->
+        <button type="submit" class="btn-generate">
+          Generate
+        </button>
       </form>
     </div>
   </section>
 
-  <!-- Chat toggle + box -->
+  <!-- Chat toggle & box -->
   <button class="chat-toggle">
-    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
+    <img
+      src="{{ url_for('static', filename='chat-icon.png') }}"
+      alt="Chat"
+    />
   </button>
   <div class="chat-box">
     <div class="chat-header">
@@ -105,37 +141,52 @@
     </div>
   </div>
 
-  <!-- JS -->
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
   <script>
-    // Toggle chat box
-    document.querySelector('.chat-toggle').addEventListener('click', () => {
-      document.querySelector('.chat-box').classList.toggle('open');
+    // Chat open/close & Enter to send
+    const chatBox = document.querySelector('.chat-box');
+    const toggle = document.querySelector('.chat-toggle');
+    const closeBtn = document.querySelector('.chat-close');
+    const inputField = document.querySelector('.chat-footer input');
+    const sendBtn = document.querySelector('.chat-footer button');
+
+    toggle.addEventListener('click', () => {
+      chatBox.classList.toggle('open');
+      inputField.focus();
     });
-    document.querySelector('.chat-close').addEventListener('click', () => {
-      document.querySelector('.chat-box').classList.remove('open');
+    closeBtn.addEventListener('click', () => chatBox.classList.remove('open'));
+    sendBtn.addEventListener('click', () => {
+      document.querySelector('.chat-footer input').dispatchEvent(
+        new Event('input', { bubbles: true })
+      );
+      // your chatbot.js should handle the actual sending logic
+    });
+    inputField.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendBtn.click();
+      }
     });
 
     // Multi-stop logic
-    const trip = document.getElementById('trip_type');
+    const tripRadios = document.getElementsByName('trip_type');
     const stopsContainer = document.getElementById('stops-container');
     const stopsList = document.getElementById('stops-list');
     let stopCount = 0;
 
-    trip.addEventListener('change', () => {
-      if (trip.value === 'multi_stop') {
-        stopsContainer.style.display = 'block';
-        if (!stopCount) {
-          addStop(); // start with 2nd city
+    tripRadios.forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (radio.value === 'multi_stop') {
+          stopsContainer.style.display = 'block';
+          if (!stopCount) addStop();
+        } else {
+          stopsContainer.style.display = 'none';
+          stopsList.innerHTML = '';
+          stopCount = 0;
         }
-      } else {
-        stopsContainer.style.display = 'none';
-        stopsList.innerHTML = '';
-        stopCount = 0;
-      }
+      });
     });
 
-    // Add / remove stops
     function addStop() {
       stopCount++;
       const group = document.createElement('div');
@@ -147,14 +198,14 @@
       input.name = `destination${stopCount + 1}`;
       input.placeholder = `City ${stopCount + 1}`;
       input.required = true;
-      const btnRemove = document.createElement('button');
-      btnRemove.type = 'button';
-      btnRemove.textContent = 'Remove';
-      btnRemove.className = 'btn-remove';
-      btnRemove.addEventListener('click', () => {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Remove';
+      remove.className = 'btn-remove';
+      remove.addEventListener('click', () => {
         stopsList.removeChild(group);
       });
-      group.append(label, input, btnRemove);
+      group.append(label, input, remove);
       stopsList.appendChild(group);
     }
 
