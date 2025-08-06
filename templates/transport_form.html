@@ -5,11 +5,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DSV Transportation Quotation</title>
-
-  <!-- Main stylesheet -->
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
-
-  <!-- Quick flex‐row helper for side‐by‐side fields -->
   <style>
     .form-row {
       display: flex;
@@ -21,44 +17,32 @@
   </style>
 </head>
 <body>
-  <!-- Logo stays outside the input container -->
-  <img
-    src="{{ url_for('static', filename='dsv_logo.png') }}"
-    alt="DSV Logo"
-    class="dsv-logo"
-  />
-
   <section class="quote-section">
     <div class="quote-card">
-      <!-- 4) Header updated -->
+      <!-- Logo INSIDE the card -->
+      <img
+        src="{{ url_for('static', filename='dsv_logo.png') }}"
+        alt="DSV Logo"
+        class="logo"
+      />
+
+      <!-- Header -->
       <h1>Transportation Quotation</h1>
 
       <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- 2) From & To side by side -->
+        <!-- From & To side by side -->
         <div class="form-row">
           <div class="form-group">
             <label for="origin">From</label>
-            <input
-              type="text"
-              id="origin"
-              name="origin"
-              placeholder="Origin city"
-              required
-            />
+            <input type="text" id="origin" name="origin" placeholder="Origin city" required />
           </div>
           <div class="form-group">
             <label for="destination">To</label>
-            <input
-              type="text"
-              id="destination"
-              name="destination"
-              placeholder="Destination city"
-              required
-            />
+            <input type="text" id="destination" name="destination" placeholder="Destination city" required />
           </div>
         </div>
 
-        <!-- 2) Trip Type selector -->
+        <!-- Trip Type -->
         <div class="form-group">
           <label for="trip_type">Trip Type</label>
           <select id="trip_type" name="trip_type" required>
@@ -69,18 +53,13 @@
           </select>
         </div>
 
-        <!-- 2) Extra destination, shown only on multi_stop -->
+        <!-- Extra destination for multi-stop -->
         <div id="extra-destination" class="form-group" style="display:none;">
           <label for="destination2">Additional Stop</label>
-          <input
-            type="text"
-            id="destination2"
-            name="destination2"
-            placeholder="Next city"
-          />
+          <input type="text" id="destination2" name="destination2" placeholder="Next city" />
         </div>
 
-        <!-- 3) Truck Type with added options -->
+        <!-- Truck Type -->
         <div class="form-group">
           <label for="truck_type">Truck Type</label>
           <select id="truck_type" name="truck_type" required>
@@ -96,7 +75,7 @@
           </select>
         </div>
 
-        <!-- 5) Cargo Type -->
+        <!-- Cargo Type -->
         <div class="form-group">
           <label for="cargo_type">Cargo Type</label>
           <select id="cargo_type" name="cargo_type" required>
@@ -105,7 +84,7 @@
           </select>
         </div>
 
-        <!-- 5) CICPA Pass -->
+        <!-- CICPA Pass -->
         <div class="form-group">
           <label for="cicpa">CICPA Pass Required?</label>
           <select id="cicpa" name="cicpa" required>
@@ -114,30 +93,24 @@
           </select>
         </div>
 
-        <!-- 1) Recipient Email removed -->
-
         <!-- Generate button -->
-        <button type="submit" class="btn-generate">
-          Generate
-        </button>
+        <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
   </section>
 
-  <!-- Chat widget toggle -->
+  <!-- Chat widget toggle OUTSIDE the quote-card -->
   <button class="chat-toggle">
-    <img
-      src="{{ url_for('static', filename='chat-icon.png') }}"
-      alt="Chat"
-    />
+    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 
-  <!-- Toggle extra destination for multiple stops -->
+  <!-- Show/hide extra destination -->
   <script>
-    document.getElementById('trip_type').addEventListener('change', function() {
-      const extra = document.getElementById('extra-destination');
-      extra.style.display = this.value === 'multi_stop' ? 'block' : 'none';
+    document.getElementById("trip_type").addEventListener("change", function() {
+      document
+        .getElementById("extra-destination")
+        .style.display = (this.value === "multi_stop" ? "block" : "none");
     });
   </script>
 </body>
