@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <!-- Logo pinned above the card -->
+  <!-- Logo pinned above -->
   <img
     src="{{ url_for('static', filename='dsv_logo.png') }}"
     alt="DSV Logo"
@@ -44,7 +44,7 @@
           </div>
         </div>
 
-        <!-- Trip Type as radios -->
+        <!-- Trip Type radios -->
         <div class="form-group">
           <label>Trip Type</label>
           <div class="trip-options">
@@ -55,7 +55,11 @@
               <input type="radio" name="trip_type" value="return" />Return
             </label>
             <label>
-              <input type="radio" name="trip_type" value="multi_stop" />Multiple Stops
+              <input
+                type="radio"
+                name="trip_type"
+                value="multi_stop"
+              />Multiple Stops
             </label>
           </div>
         </div>
@@ -64,7 +68,11 @@
         <div id="stops-container" style="display:none;">
           <label>Additional Cities</label>
           <div id="stops-list"></div>
-          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
+          <button
+            type="button"
+            id="add-stop"
+            class="btn-add"
+          >+ Add City</button>
         </div>
 
         <!-- Truck Type -->
@@ -101,7 +109,7 @@
           </select>
         </div>
 
-        <!-- Generate button -->
+        <!-- Generate -->
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
@@ -109,10 +117,13 @@
 
   <!-- Chat toggle -->
   <button class="chat-toggle">
-    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
+    <img
+      src="{{ url_for('static', filename='chat-icon.png') }}"
+      alt="Chat"
+    />
   </button>
 
-  <!-- Chat box with the exact IDs chatbot.js expects -->
+  <!-- Chat box -->
   <div id="chat-box" class="chat-box">
     <div class="chat-header">
       <span>DSV Chat</span>
@@ -131,20 +142,20 @@
 
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
   <script>
-    // Multi-stop dynamic fields
-    const tripRadios = document.getElementsByName('trip_type');
-    const stopsContainer = document.getElementById('stops-container');
-    const stopsList = document.getElementById('stops-list');
+    // Dynamic stops
+    const tripRadios = document.getElementsByName("trip_type");
+    const stopsContainer = document.getElementById("stops-container");
+    const stopsList = document.getElementById("stops-list");
     let stopCount = 0;
 
-    tripRadios.forEach(radio => {
-      radio.addEventListener('change', () => {
-        if (radio.value === 'multi_stop') {
-          stopsContainer.style.display = 'block';
+    Array.from(tripRadios).forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (radio.value === "multi_stop") {
+          stopsContainer.style.display = "block";
           if (!stopCount) addStop();
         } else {
-          stopsContainer.style.display = 'none';
-          stopsList.innerHTML = '';
+          stopsContainer.style.display = "none";
+          stopsList.innerHTML = "";
           stopCount = 0;
         }
       });
@@ -152,26 +163,51 @@
 
     function addStop() {
       stopCount++;
-      const group = document.createElement('div');
-      group.className = 'form-group';
-      const label = document.createElement('label');
+      const group = document.createElement("div");
+      group.className = "form-group";
+      const label = document.createElement("label");
       label.textContent = `City ${stopCount + 1}`;
-      const input = document.createElement('input');
-      input.type = 'text';
+      const input = document.createElement("input");
+      input.type = "text";
       input.name = `destination${stopCount + 1}`;
       input.placeholder = `City ${stopCount + 1}`;
       input.required = true;
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.textContent = 'Remove';
-      remove.className = 'btn-remove';
-      remove.addEventListener('click', () => {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.className = "btn-remove";
+      remove.addEventListener("click", () => {
         stopsList.removeChild(group);
       });
       group.append(label, input, remove);
       stopsList.appendChild(group);
     }
-    document.getElementById('add-stop').addEventListener('click', addStop);
+    document.getElementById("add-stop").addEventListener("click", addStop);
+
+    // Chat open/close
+    const chatBox = document.getElementById("chat-box");
+    document.querySelector(".chat-toggle").addEventListener("click", () => {
+      chatBox.classList.toggle("open");
+      document.getElementById("chat-input").focus();
+    });
+    document.getElementById("chat-close").addEventListener("click", () => {
+      chatBox.classList.remove("open");
+    });
+
+    // Send on Enter or click
+    const chatInput = document.getElementById("chat-input");
+    const chatSend = document.getElementById("chat-send");
+    function sendMessage() {
+      // This function is defined in chatbot.js
+      chatSend.dispatchEvent(new Event("click"));
+    }
+    chatSend.addEventListener("click", () => {});
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
   </script>
 </body>
 </html>
