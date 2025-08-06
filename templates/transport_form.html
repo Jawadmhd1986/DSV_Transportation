@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DSV Transportation Quotation</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <!-- Logo above card -->
+  <!-- Logo pinned above the card -->
   <img
     src="{{ url_for('static', filename='dsv_logo.png') }}"
     alt="DSV Logo"
@@ -49,35 +49,22 @@
           <label>Trip Type</label>
           <div class="trip-options">
             <label>
-              <input
-                type="radio"
-                name="trip_type"
-                value="one_way"
-                required
-              />One Way
+              <input type="radio" name="trip_type" value="one_way" required />One Way
             </label>
             <label>
               <input type="radio" name="trip_type" value="return" />Return
             </label>
             <label>
-              <input
-                type="radio"
-                name="trip_type"
-                value="multi_stop"
-              />Multiple Stops
+              <input type="radio" name="trip_type" value="multi_stop" />Multiple Stops
             </label>
           </div>
         </div>
 
-        <!-- Additional Cities -->
+        <!-- Additional Cities (dynamically add/remove) -->
         <div id="stops-container" style="display:none;">
           <label>Additional Cities</label>
           <div id="stops-list"></div>
-          <button
-            type="button"
-            id="add-stop"
-            class="btn-add"
-          >+ Add City</button>
+          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
         </div>
 
         <!-- Truck Type -->
@@ -115,19 +102,14 @@
         </div>
 
         <!-- Generate -->
-        <button type="submit" class="btn-generate">
-          Generate
-        </button>
+        <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
   </section>
 
-  <!-- Chat toggle & box -->
+  <!-- Chat toggle & chat box -->
   <button class="chat-toggle">
-    <img
-      src="{{ url_for('static', filename='chat-icon.png') }}"
-      alt="Chat"
-    />
+    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
   <div class="chat-box">
     <div class="chat-header">
@@ -135,46 +117,37 @@
       <button class="chat-close">&times;</button>
     </div>
     <div class="chat-messages"></div>
-    <div class="chat-footer">
-      <input type="text" placeholder="Type a message…" />
-      <button type="button">Send</button>
-    </div>
+    <form class="chat-footer">
+      <input type="text" placeholder="Type a message…" required />
+      <button type="submit">Send</button>
+    </form>
   </div>
 
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
   <script>
-    // Chat open/close & Enter to send
+    // Chat open/close & Enter-to-send
     const chatBox = document.querySelector('.chat-box');
-    const toggle = document.querySelector('.chat-toggle');
-    const closeBtn = document.querySelector('.chat-close');
-    const inputField = document.querySelector('.chat-footer input');
-    const sendBtn = document.querySelector('.chat-footer button');
-
-    toggle.addEventListener('click', () => {
+    document.querySelector('.chat-toggle').addEventListener('click', () => {
       chatBox.classList.toggle('open');
-      inputField.focus();
+      document.querySelector('.chat-footer input').focus();
     });
-    closeBtn.addEventListener('click', () => chatBox.classList.remove('open'));
-    sendBtn.addEventListener('click', () => {
-      document.querySelector('.chat-footer input').dispatchEvent(
-        new Event('input', { bubbles: true })
-      );
-      // your chatbot.js should handle the actual sending logic
+    document.querySelector('.chat-close').addEventListener('click', () => {
+      chatBox.classList.remove('open');
     });
-    inputField.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        sendBtn.click();
-      }
+    const chatForm = document.querySelector('.chat-footer');
+    chatForm.addEventListener('submit', e => {
+      e.preventDefault();
+      // trigger existing send logic in chatbot.js
+      chatForm.querySelector('button').click();
+      chatForm.querySelector('input').value = '';
     });
 
-    // Multi-stop logic
+    // Multi-stop dynamic fields
     const tripRadios = document.getElementsByName('trip_type');
     const stopsContainer = document.getElementById('stops-container');
     const stopsList = document.getElementById('stops-list');
     let stopCount = 0;
-
-    tripRadios.forEach(radio => {
+    Array.from(tripRadios).forEach(radio => {
       radio.addEventListener('change', () => {
         if (radio.value === 'multi_stop') {
           stopsContainer.style.display = 'block';
@@ -186,7 +159,6 @@
         }
       });
     });
-
     function addStop() {
       stopCount++;
       const group = document.createElement('div');
@@ -208,7 +180,6 @@
       group.append(label, input, remove);
       stopsList.appendChild(group);
     }
-
     document.getElementById('add-stop').addEventListener('click', addStop);
   </script>
 </body>
