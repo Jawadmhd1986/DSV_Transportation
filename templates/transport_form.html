@@ -8,13 +8,19 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
+  <!-- Blue header + logo -->
+  <img
+    src="{{ url_for('static', filename='dsv_logo.png') }}"
+    alt="DSV Logo"
+    class="dsv-logo"
+  />
+
   <section class="quote-section">
     <div class="quote-card">
-      <!-- Header -->
       <h1>Transportation Quotation</h1>
 
       <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From & To -->
+        <!-- From & To side-by-side -->
         <div class="form-row">
           <div class="form-group">
             <label for="origin">From</label>
@@ -37,8 +43,8 @@
           </select>
         </div>
 
-        <!-- Multiple stops container -->
-        <div id="stops-container" class="form-group" style="display:none;">
+        <!-- Additional Cities (dynamic) -->
+        <div id="stops-container" style="display:none;">
           <label>Additional Cities</label>
           <div id="stops-list"></div>
           <button type="button" id="add-stop" class="btn-add">+ Add City</button>
@@ -78,46 +84,81 @@
           </select>
         </div>
 
-        <!-- Generate button -->
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
   </section>
 
-  <!-- Chat widget toggle -->
+  <!-- Chat toggle + box -->
   <button class="chat-toggle">
     <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
   </button>
+  <div class="chat-box">
+    <div class="chat-header">
+      <span>DSV Chat</span>
+      <button class="chat-close">&times;</button>
+    </div>
+    <div class="chat-messages"></div>
+    <div class="chat-footer">
+      <input type="text" placeholder="Type a message…" />
+      <button type="button">Send</button>
+    </div>
+  </div>
+
+  <!-- JS -->
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
   <script>
-    // Show/hide stops container
+    // Toggle chat box
+    document.querySelector('.chat-toggle').addEventListener('click', () => {
+      document.querySelector('.chat-box').classList.toggle('open');
+    });
+    document.querySelector('.chat-close').addEventListener('click', () => {
+      document.querySelector('.chat-box').classList.remove('open');
+    });
+
+    // Multi-stop logic
     const trip = document.getElementById('trip_type');
     const stopsContainer = document.getElementById('stops-container');
+    const stopsList = document.getElementById('stops-list');
+    let stopCount = 0;
+
     trip.addEventListener('change', () => {
-      stopsContainer.style.display = trip.value === 'multi_stop' ? 'block' : 'none';
-      if (trip.value !== 'multi_stop') {
-        document.getElementById('stops-list').innerHTML = '';
+      if (trip.value === 'multi_stop') {
+        stopsContainer.style.display = 'block';
+        if (!stopCount) {
+          addStop(); // start with 2nd city
+        }
+      } else {
+        stopsContainer.style.display = 'none';
+        stopsList.innerHTML = '';
         stopCount = 0;
       }
     });
 
-    // Dynamic addition of city fields
-    let stopCount = 0;
-    document.getElementById('add-stop').addEventListener('click', () => {
+    // Add / remove stops
+    function addStop() {
       stopCount++;
-      const stopsList = document.getElementById('stops-list');
-      const div = document.createElement('div');
-      div.className = 'form-group';
+      const group = document.createElement('div');
+      group.className = 'form-group';
       const label = document.createElement('label');
-      label.textContent = `City ${stopCount+1}`;
+      label.textContent = `City ${stopCount + 1}`;
       const input = document.createElement('input');
       input.type = 'text';
-      input.name = `destination${stopCount+1}`;
-      input.placeholder = `City ${stopCount+1}`;
+      input.name = `destination${stopCount + 1}`;
+      input.placeholder = `City ${stopCount + 1}`;
       input.required = true;
-      div.append(label, input);
-      stopsList.appendChild(div);
-    });
+      const btnRemove = document.createElement('button');
+      btnRemove.type = 'button';
+      btnRemove.textContent = 'Remove';
+      btnRemove.className = 'btn-remove';
+      btnRemove.addEventListener('click', () => {
+        stopsList.removeChild(group);
+      });
+      group.append(label, input, btnRemove);
+      stopsList.appendChild(group);
+    }
+
+    document.getElementById('add-stop').addEventListener('click', addStop);
   </script>
 </body>
 </html>
