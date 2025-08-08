@@ -494,6 +494,58 @@ def chat():
     if match([r"open yard kizad", r"kizad open yard", r"rate.*kizad open yard", r"^kizad$"]):
         return jsonify({"reply": "Open Yard KIZAD storage is **125 AED/SQM/year**. WMS is excluded. For availability, contact Antony Jeyaraj at antony.jeyaraj@dsv.com."})
 
+    # General VAS prompt if user just says 'vas' / 'vas rates'
+    if match([
+        r"^vas$",
+        r"^vas\s*rates?$",
+        r"^value\s*added\s*services$",
+        r"^value\s*added\s*service$",
+        r"^vas\s*details$"
+    ]):
+        return jsonify({"reply":
+            "Which VAS do you need?\n\n"
+            "🟦 Type **Standard VAS** for AC/Non-AC/Open Shed\n"
+            "🧪 Type **Chemical VAS** for hazmat/chemicals\n"
+            "🏗 Type **Open Yard VAS** for forklifts/cranes"})
+    # --- VAS: Aggregate / Prompt ---
+    if match([
+        r"^all\s*vas(?:es)?\s*(rates|list)?$",
+        r"^give\s*me\s*all\s*vas(?:es)?\s*(rates|list)?$",
+        r"^show\s*all\s*vas(?:es)?",
+        r"^complete\s*vas\s*(rates|list)?$",
+        r"^full\s*vas\s*(rates|list)?$",
+        r"all.*value\s*added\s*services",
+        r"vas.*(full|all|complete).*"
+    ]):
+        return jsonify({"reply":
+        "**📦 Standard VAS:**\n"
+        "- In/Out Handling: 20 AED/CBM\n"
+        "- Pallet Loading: 12 AED/pallet\n"
+        "- Documentation: 125 AED/set\n"
+        "- Packing with pallet: 85 AED/CBM\n"
+        "- Inventory Count: 3,000 AED/event\n"
+        "- Case Picking: 2.5 AED/carton\n"
+        "- Sticker Labeling: 1.5 AED/label\n"
+        "- Shrink Wrapping: 6 AED/pallet\n"
+        "- VNA Usage: 2.5 AED/pallet\n\n"
+        "**🧪 Chemical VAS:**\n"
+        "- Handling (Palletized): 20 AED/CBM\n"
+        "- Handling (Loose): 25 AED/CBM\n"
+        "- Documentation: 150 AED/set\n"
+        "- Packing with pallet: 85 AED/CBM\n"
+        "- Inventory Count: 3,000 AED/event\n"
+        "- Inner Bag Picking: 3.5 AED/bag\n"
+        "- Sticker Labeling: 1.5 AED/label\n"
+        "- Shrink Wrapping: 6 AED/pallet\n\n"
+        "**🏗 Open Yard VAS:**\n"
+        "- Forklift (3T–7T): 90 AED/hr\n"
+        "- Forklift (10T): 200 AED/hr\n"
+        "- Forklift (15T): 320 AED/hr\n"
+        "- Mobile Crane (50T): 250 AED/hr\n"
+        "- Mobile Crane (80T): 450 AED/hr\n"
+        "- Container Lifting: 250 AED/lift\n"
+        "- Container Stripping (20ft): 1,200 AED/hr"})
+
     # --- VAS rates ---
     if match([
         r"standard vas", r"standard", r"standard value added services", r"normal vas", r"normal value added services",
@@ -1527,66 +1579,14 @@ def chat():
     if match([r"adnoc|adnoc project|dsv.*adnoc|oil and gas project|dsv support.*adnoc|logistics for adnoc"]):
         return jsonify({"reply": "DSV has an active relationship with ADNOC and its group companies, supporting logistics for Oil & Gas projects across Abu Dhabi. This includes warehousing of chemicals, fleet transport to remote sites, 3PL for EPC contractors, and marine logistics for ADNOC ISLP and offshore projects. All operations are QHSE compliant and meet ADNOC’s safety and performance standards."})
 
+# FM-200 quick explainer
+    if match([r"\bfm\s*-?\s*200\b", r"\bfm200\b"]):
+        return jsonify({"reply":
+            "🔒 **FM‑200 (HFC‑227ea)** is a clean‑agent fire suppression system used in sensitive areas (like RMS). "
+            "It extinguishes fires quickly by absorbing heat, leaves no residue, and is safe for documents and electronics when applied per design."})
+        
     if match([r"summer break|midday break|working hours summer|12.*3.*break|uae heat ban|no work afternoon|hot season schedule"]):
         return jsonify({"reply": "DSV complies with UAE summer working hour restrictions. From June 15 to September 15, all outdoor work (including open yard and transport loading) is paused daily between 12:30 PM and 3:30 PM. This ensures staff safety and follows MOHRE guidelines."})
-    
-    # General VAS prompt if user just says 'vas' / 'vas rates'
-    if match([
-        r"^vas$",
-        r"^vas\s*rates?$",
-        r"^value\s*added\s*services$",
-        r"^value\s*added\s*service$",
-        r"^vas\s*details$"
-    ]):
-        return jsonify({{"reply":
-            "Which VAS do you need?\n\n"
-            "🟦 Type **Standard VAS** for AC/Non-AC/Open Shed\n"
-            "🧪 Type **Chemical VAS** for hazmat/chemicals\n"
-            "🏗 Type **Open Yard VAS** for forklifts/cranes"}})
-    # --- VAS: Aggregate / Prompt ---
-    if match([
-        r"^all\s*vas(?:es)?\s*(rates|list)?$",
-        r"^give\s*me\s*all\s*vas(?:es)?\s*(rates|list)?$",
-        r"^show\s*all\s*vas(?:es)?",
-        r"^complete\s*vas\s*(rates|list)?$",
-        r"^full\s*vas\s*(rates|list)?$",
-        r"all.*value\s*added\s*services",
-        r"vas.*(full|all|complete).*"
-    ]):
-        return jsonify({{"reply":
-        "**📦 Standard VAS:**\n"
-        "- In/Out Handling: 20 AED/CBM\n"
-        "- Pallet Loading: 12 AED/pallet\n"
-        "- Documentation: 125 AED/set\n"
-        "- Packing with pallet: 85 AED/CBM\n"
-        "- Inventory Count: 3,000 AED/event\n"
-        "- Case Picking: 2.5 AED/carton\n"
-        "- Sticker Labeling: 1.5 AED/label\n"
-        "- Shrink Wrapping: 6 AED/pallet\n"
-        "- VNA Usage: 2.5 AED/pallet\n\n"
-        "**🧪 Chemical VAS:**\n"
-        "- Handling (Palletized): 20 AED/CBM\n"
-        "- Handling (Loose): 25 AED/CBM\n"
-        "- Documentation: 150 AED/set\n"
-        "- Packing with pallet: 85 AED/CBM\n"
-        "- Inventory Count: 3,000 AED/event\n"
-        "- Inner Bag Picking: 3.5 AED/bag\n"
-        "- Sticker Labeling: 1.5 AED/label\n"
-        "- Shrink Wrapping: 6 AED/pallet\n\n"
-        "**🏗 Open Yard VAS:**\n"
-        "- Forklift (3T–7T): 90 AED/hr\n"
-        "- Forklift (10T): 200 AED/hr\n"
-        "- Forklift (15T): 320 AED/hr\n"
-        "- Mobile Crane (50T): 250 AED/hr\n"
-        "- Mobile Crane (80T): 450 AED/hr\n"
-        "- Container Lifting: 250 AED/lift\n"
-        "- Container Stripping (20ft): 1,200 AED/hr"}})
-
-    # FM-200 quick explainer
-    if match([r"\bfm\s*-?\s*200\b", r"\bfm200\b"]):
-        return jsonify({{"reply":
-            "🔒 **FM‑200 (HFC‑227ea)** is a clean‑agent fire suppression system used in sensitive areas (like RMS). "
-            "It extinguishes fires quickly by absorbing heat, leaves no residue, and is safe for documents and electronics when applied per design."}})
 
     if match([
         r"like what", r"such as", r"for example", r"what kind of help",
