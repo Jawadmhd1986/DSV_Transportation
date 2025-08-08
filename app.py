@@ -411,27 +411,6 @@ def chat():
             "Pallets are used for racking, picking, and transport. DSV also offers VAS like pallet loading, shrink wrapping, labeling, and stretch film wrapping for safe handling."
         })
 
-    # --- All Storage Rates at Once ---
-    if match([
-        r"\ball\b", r"all.*storage.*rates", r"complete.*storage.*rate", r"all.*rate", r"list.*storage.*fees",
-        r"storage.*rate.*overview", r"summary.*storage.*rates",
-        r"show.*all.*storage.*charges", r"storage.*rates.*all", r"rates for all storage"
-    ]):
-        return jsonify({"reply":
-            "**Here are the current DSV Abu Dhabi storage rates:**\n\n"
-            "**📦 Standard Storage:**\n"
-            "- AC: 2.5 AED/CBM/day\n"
-            "- Non-AC: 2.0 AED/CBM/day\n"
-            "- Open Shed: 1.8 AED/CBM/day\n\n"
-            "**🧪 Chemical Storage:**\n"
-            "- Chemical AC: 3.5 AED/CBM/day\n"
-            "- Chemical Non-AC: 2.7 AED/CBM/day\n\n"
-            "**🏗 Open Yard Storage:**\n"
-            "- KIZAD: 125 AED/SQM/year\n"
-            "- Mussafah: 160 AED/SQM/year\n\n"
-            "*WMS fee applies to indoor storage unless excluded. For a full quotation, fill out the form.*"
-        })
-
     # --- Storage Rate Initial Question ---
     if match([
         r"storage rate[s]?$", r"\brates\b", r"storage", r"storage cost",
@@ -493,7 +472,7 @@ def chat():
 
     if match([r"open yard kizad", r"kizad open yard", r"rate.*kizad open yard", r"^kizad$"]):
         return jsonify({"reply": "Open Yard KIZAD storage is **125 AED/SQM/year**. WMS is excluded. For availability, contact Antony Jeyaraj at antony.jeyaraj@dsv.com."})
-
+ 
     # General VAS prompt if user just says 'vas' / 'vas rates'
     if match([
         r"^vas$",
@@ -507,16 +486,17 @@ def chat():
             "🟦 Type **Standard VAS** for AC/Non-AC/Open Shed\n"
             "🧪 Type **Chemical VAS** for hazmat/chemicals\n"
             "🏗 Type **Open Yard VAS** for forklifts/cranes"})
-    # --- VAS: Aggregate / Prompt ---
+    
+# --- VAS: Aggregate / Prompt ---
     if match([
-        r"^all\s*vas(?:es)?\s*(rates|list)?$",
-        r"^give\s*me\s*all\s*vas(?:es)?\s*(rates|list)?$",
-        r"^show\s*all\s*vas(?:es)?",
-        r"^complete\s*vas\s*(rates|list)?$",
-        r"^full\s*vas\s*(rates|list)?$",
-        r"all.*value\s*added\s*services",
-        r"vas.*(full|all|complete).*"
-    ]):
+    r"^all\s*vas(?:es)?\s*(rates|list)?$",
+    r"^give\s*me\s*all\s*vas(?:es)?\s*(rates|list)?$",
+    r"^show\s*all\s*vas(?:es)?",
+    r"^complete\s*vas\s*(rates|list)?$",
+    r"^full\s*vas\s*(rates|list)?$",
+    r"all.*value\s*added\s*services",
+    r"vas.*(full|all|complete).*"
+]):
         return jsonify({"reply":
         "**📦 Standard VAS:**\n"
         "- In/Out Handling: 20 AED/CBM\n"
@@ -544,7 +524,31 @@ def chat():
         "- Mobile Crane (50T): 250 AED/hr\n"
         "- Mobile Crane (80T): 450 AED/hr\n"
         "- Container Lifting: 250 AED/lift\n"
-        "- Container Stripping (20ft): 1,200 AED/hr"})
+        "- Container Stripping (20ft): 1,200 AED/hr"
+    })
+    
+# --- All Storage Rates at Once ---
+    if ("value added services" not in message) and match([
+    r"\ball\s+storage\s+rates?\b",
+    r"\b(all|complete|full)\b.*\bstorage\b.*\brates?\b",
+    r"\bsummary\b.*\bstorage\b.*\brates?\b",
+    r"\blist\b.*\bstorage\b.*\b(fees|rates?)\b",
+    r"\bshow\b.*\ball\b.*\bstorage\b.*\b(charges|rates?)\b",
+]):
+        return jsonify({"reply":
+            "**Here are the current DSV Abu Dhabi storage rates:**\n\n"
+            "**📦 Standard Storage:**\n"
+            "- AC: 2.5 AED/CBM/day\n"
+            "- Non-AC: 2.0 AED/CBM/day\n"
+            "- Open Shed: 1.8 AED/CBM/day\n\n"
+            "**🧪 Chemical Storage:**\n"
+            "- Chemical AC: 3.5 AED/CBM/day\n"
+            "- Chemical Non-AC: 2.7 AED/CBM/day\n\n"
+            "**🏗 Open Yard Storage:**\n"
+            "- KIZAD: 125 AED/SQM/year\n"
+            "- Mussafah: 160 AED/SQM/year\n\n"
+            "*WMS fee applies to indoor storage unless excluded. For a full quotation, fill out the form.*"
+        })
 
     # --- VAS rates ---
     if match([
