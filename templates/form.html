@@ -44,8 +44,9 @@
           <option>No</option>
         </select>
 
-        <label for="commodity">Commodity:</label>
-        <input type="text" id="commodity" name="commodity" placeholder="Enter commodity">
+        <label for="commodity">Commodity</label>
+        <input type="text" id="commodity" name="commodity" placeholder="e.g., Furniture / Machinery" required>
+
 
         <button type="submit" class="btn-generate">
           Generate
@@ -77,4 +78,5 @@
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 </body>
 </html>
+
 
