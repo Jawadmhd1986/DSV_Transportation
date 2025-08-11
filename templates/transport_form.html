@@ -1,165 +1,322 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>DSV Transportation Quotation</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+<meta charset="utf-8" />
+<title>DSV Quotation + Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<style>
+:root {
+  --dsv-blue: #003366;
+  --dsv-blue-2: #0b2a53;
+  --accent: #0090ff;
+  --bg: #f4f6f9;
+  --bot: #ffffff;
+  --user: #e7f1ff;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.10);
+}
+
+/* Floating Chat Button */
+.chat-toggle {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 99999;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--dsv-blue);
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow);
+  transition: transform .15s ease, background .2s;
+}
+.chat-toggle:hover {
+  transform: translateY(-2px);
+  background: var(--dsv-blue-2);
+}
+
+/* Chat Window */
+.chat-window {
+  position: fixed;
+  right: 22px;
+  bottom: 90px;
+  z-index: 99998;
+  width: min(380px, 92vw);
+  height: 70vh;
+  max-height: 680px;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-window.open {
+  display: flex;
+}
+
+.chat-header {
+  background: linear-gradient(180deg, var(--dsv-blue), var(--dsv-blue-2));
+  color: #fff;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.chat-title {
+  font-weight: 600;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.chat-title .logo {
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 4px;
+  display: inline-block;
+}
+#chat-close {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.chat-body {
+  padding: 16px;
+  overflow: auto;
+  background: var(--bg);
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+/* Message bubbles */
+.msg {
+  display: flex;
+  margin: 10px 0;
+}
+.msg .bubble {
+  max-width: 85%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.45;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .04);
+}
+.msg.bot .bubble {
+  background: var(--bot);
+  border-top-left-radius: 8px;
+}
+.msg.user {
+  justify-content: flex-end;
+}
+.msg.user .bubble {
+  background: var(--user);
+  border-top-right-radius: 8px;
+}
+
+/* Card look for rich replies */
+.bubble .card {
+  background: #fff;
+  border: 1px solid #edf1f5;
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, .06);
+}
+.bubble ul {
+  margin: 8px 0 0 18px;
+  padding: 0;
+}
+.bubble li {
+  margin: 4px 0;
+}
+.bubble strong {
+  font-weight: 700;
+}
+
+/* Typing dots */
+.typing {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b9c7da;
+  animation: bounce 1s infinite ease-in-out;
+}
+.dot:nth-child(2) { animation-delay: .15s }
+.dot:nth-child(3) { animation-delay: .3s }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(.8); opacity: .6 }
+  40% { transform: scale(1); opacity: 1 }
+}
+
+.chat-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+  border-top: 1px solid #eef2f6;
+}
+#chat-input {
+  flex: 1;
+  border: 1px solid #d7e0ea;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  outline: none;
+  font: inherit;
+}
+#chat-send {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 144, 255, .28);
+  height: 42px;
+}
+#chat-send:hover { filter: brightness(1.05) }
+</style>
 </head>
 <body>
-  <!-- Floating DSV logo -->
-  <img src="{{ url_for('static', filename='dsv_logo.png') }}" alt="DSV Logo" class="dsv-logo" />
 
-  <section class="quote-section">
-    <div class="quote-card">
-      <h1>Transportation Quotation</h1>
+<!-- Floating Chat Button -->
+<button class="chat-toggle" type="button" aria-label="Open chat">💬</button>
 
-      <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From / To -->
-        <div class="form-row">
-          <div class="form-group">
-            <label for="origin">From</label>
-            <select id="origin" name="origin" required>
-              <option value="">— Select City —</option>
-              <option>Mussafah</option>
-              <option>Alain Industrial Area</option>
-              <option>Al Ain City Limits</option>
-              <option>AUH Airport</option>
-              <option>Abu Dhabi City Limits</option>
-              <option>Mafraq</option>
-              <option>ICAD 2/ICAD3</option>
-              <option>ICAD 4</option>
-              <option>Al Wathba</option>
-              <option>Mina Zayed/Free Port</option>
-              <option>Tawazun Industrial Park</option>
-              <option>KIZAD</option>
-              <option>Khalifa Port/Taweelah</option>
-              <option>Sweihan</option>
-              <option>Yas Island</option>
-              <option>Ghantoot</option>
-              <option>Jebel Ali</option>
-              <option>Dubai-Al Qusais</option>
-              <option>Dubai-Al Quoz</option>
-              <option>Dubai-DIP/DIC</option>
-              <option>Dubai-DMC</option>
-              <option>Dubai-City Limits</option>
-              <option>Sharjah</option>
-              <option>Sharjah-Hamriyah</option>
-              <option>Ajman</option>
-              <option>Umm Al Quwain</option>
-              <option>Fujairah</option>
-              <option>Ras Al Khaimah-Al Ghail</option>
-              <option>Ras Al Khaimah-Hamra</option>
-              <option>Al Markaz Area</option>
-              <option>Baniyas</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="destination">To</label>
-            <select id="destination" name="destination" required>
-              <option value="">— Select City —</option>
-              <option>Mussafah</option>
-              <option>Alain Industrial Area</option>
-              <option>Al Ain City Limits</option>
-              <option>AUH Airport</option>
-              <option>Abu Dhabi City Limits</option>
-              <option>Mafraq</option>
-              <option>ICAD 2/ICAD3</option>
-              <option>ICAD 4</option>
-              <option>Al Wathba</option>
-              <option>Mina Zayed/Free Port</option>
-              <option>Tawazun Industrial Park</option>
-              <option>KIZAD</option>
-              <option>Khalifa Port/Taweelah</option>
-              <option>Sweihan</option>
-              <option>Yas Island</option>
-              <option>Ghantoot</option>
-              <option>Jebel Ali</option>
-              <option>Dubai-Al Qusais</option>
-              <option>Dubai-Al Quoz</option>
-              <option>Dubai-DIP/DIC</option>
-              <option>Dubai-DMC</option>
-              <option>Dubai-City Limits</option>
-              <option>Sharjah</option>
-              <option>Sharjah-Hamriyah</option>
-              <option>Ajman</option>
-              <option>Umm Al Quwain</option>
-              <option>Fujairah</option>
-              <option>Ras Al Khaimah-Al Ghail</option>
-              <option>Ras Al Khaimah-Hamra</option>
-              <option>Al Markaz Area</option>
-              <option>Baniyas</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Trip Type -->
-        <div class="form-group">
-          <label>Trip Type</label>
-          <div class="trip-options">
-            <label><input type="radio" name="trip_type" value="one_way" required /><span>One Way</span></label>
-            <label><input type="radio" name="trip_type" value="back_load" /><span>Back Load</span></label>
-            <label><input type="radio" name="trip_type" value="multi" /><span>Multiple</span></label>
-          </div>
-        </div>
-
-        <!-- Additional Cities (shown only for Multiple) -->
-        <div id="stops-container" class="form-group" style="display:none;">
-          <label>Additional Cities</label>
-          <div id="stops-list"></div>
-          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
-        </div>
-
-        <!-- Truck Types dynamic rows -->
-        <div class="form-group">
-          <label>Truck Types</label>
-          <div id="truckTypeContainer"></div>
-          <button type="button" id="add-truck-type" class="btn-add">+ Add Truck Type</button>
-        </div>
-
-        <!-- Cargo Type -->
-        <div class="form-group">
-          <label for="cargo_type">Cargo Type</label>
-          <select id="cargo_type" name="cargo_type" required>
-            <option value="general">General Cargo</option>
-            <option value="chemical">Chemical Load</option>
-            <option value="container">Container</option>
-          </select>
-        </div>
-
-        <!-- CICPA -->
-        <div class="form-group">
-          <label for="cicpa">CICPA Pass Required?</label>
-          <select id="cicpa" name="cicpa" required>
-            <option value="No">No</option>
-            <option value="Yes">Yes</option>
-          </select>
-        </div>
-
-        <button type="submit" class="btn-generate">Generate</button>
-      </form>
+<!-- Chat Window -->
+<div class="chat-window" id="chatWin" aria-live="polite">
+  <div class="chat-header">
+    <div class="chat-title">
+      <span class="logo"></span>
+      <span>DSV Chat</span>
     </div>
-  </section>
-
-  <!-- Chat toggle -->
-  <button class="chat-toggle" aria-label="Chat with DSV">
-    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
-  </button>
-
-  <!-- Chat box -->
-  <div id="chat-box" class="chat-box" aria-live="polite">
-    <div class="chat-header">
-      <span>DSV Assistant</span>
-      <button id="chat-close" title="Close chat">×</button>
-    </div>
-    <div id="chat-messages" class="chat-messages"></div>
-    <div class="chat-footer">
-      <input type="text" id="chat-input" placeholder="Type a message…" />
-      <button id="chat-send" type="button">Send</button>
-    </div>
+    <button id="chat-close" type="button" title="Close">✕</button>
   </div>
 
-  <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
+  <div class="chat-body" id="chat-box"></div>
+
+  <div class="chat-footer">
+    <input id="chat-input" type="text" placeholder="Type a message..." />
+    <button id="chat-send" type="button">Send</button>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const chatWin   = document.getElementById('chatWin');
+  const openBtn   = document.querySelector('.chat-toggle');
+  const closeBtn  = document.getElementById('chat-close');
+  const chatBox   = document.getElementById('chat-box');
+  const inputEl   = document.getElementById('chat-input');
+  const sendBtn   = document.getElementById('chat-send');
+
+  const scrollToBottom = () => { chatBox.scrollTop = chatBox.scrollHeight; };
+
+  // Format bot messages, repair inline bullets
+  function renderRich(text) {
+    let t = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/:\s*-\s/g, ':\n- ');
+    t = t.replace(/(\S)\s-\s(?=[\p{Emoji}\w])/gu, '$1\n- ');
+    if (/^- |\n- /m.test(t)) {
+      const lines = t.split(/\n/);
+      let out = [], inList = false;
+      for (const ln of lines) {
+        if (ln.trim().startsWith('- ')) {
+          if (!inList) { out.push('<ul>'); inList = true; }
+          out.push('<li>' + ln.trim().slice(2) + '</li>');
+        } else {
+          if (inList) { out.push('</ul>'); inList = false; }
+          out.push(ln);
+        }
+      }
+      if (inList) out.push('</ul>');
+      t = out.join('\n');
+    }
+    t = t.replace(/\n/g, '<br>');
+    return t;
+  }
+
+  function addMsg(text, from='bot', asCard=false) {
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${from}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = asCard ? `<div class="card">${renderRich(text)}</div>` : renderRich(text);
+    wrap.appendChild(bubble);
+    chatBox.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  let typingEl = null;
+  function showTyping() {
+    typingEl = document.createElement('div');
+    typingEl.className = 'msg bot';
+    typingEl.innerHTML = `<div class="bubble"><span class="typing">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </span></div>`;
+    chatBox.appendChild(typingEl);
+    scrollToBottom();
+  }
+  function hideTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
+
+  // Greet once when opened
+  let greeted = false;
+  function greetOnce() {
+    if (greeted) return;
+    greeted = true;
+    addMsg(
+      "Hi! I’m your DSV assistant. Ask me about **storage rates**, **VAS**, **truck types**, **distances**, **racking**, or anything logistics.",
+      'bot', true
+    );
+  }
+
+  // Open/close chat
+  openBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    chatWin.classList.toggle('open');
+    if (chatWin.classList.contains('open')) { greetOnce(); setTimeout(() => inputEl.focus(), 80); }
+  });
+  closeBtn.addEventListener('click', () => chatWin.classList.remove('open'));
+
+  // Send message
+  async function send() {
+    const text = (inputEl.value || '').trim();
+    if (!text) return;
+    addMsg(text, 'user');
+    inputEl.value = '';
+    showTyping();
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json();
+      hideTyping();
+      const looksCard = /\n- |\*\*/.test(data.reply) || data.reply.split('\n').length >= 3;
+      addMsg(data.reply, 'bot', looksCard);
+    } catch (err) {
+      hideTyping();
+      addMsg("Sorry, I couldn’t reach the server. Please try again.", 'bot');
+    }
+  }
+  sendBtn.addEventListener('click', send);
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+});
+</script>
 </body>
 </html>
