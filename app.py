@@ -25,11 +25,10 @@ def money(d):
     return f"{d.quantize(DEC('0.01'), rounding=ROUND_HALF_UP):,.2f}"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Name normalization (cities & truck types must match regardless of case/spacing)
+# Normalization
 # ──────────────────────────────────────────────────────────────────────────────
 def norm_city(s: str) -> str:
     s = (s or "").strip().lower()
-    # normalize common punctuation/spacing variants
     s = re.sub(r"\s+", " ", s)
     s = s.replace("_", " ").replace("–", "-").replace("—", "-")
     return s
@@ -40,45 +39,107 @@ def norm_truck(s: str) -> str:
         "curtainside": "box",
         "box / curtainside (5–10 tons)": "box",
         "box/curtainside": "box",
-        "3 ton": "city", "1-3 ton": "city", "city truck": "city",
-        "10 ton": "10_ton", "10-ton truck": "10_ton",
+        "curtain side trailer": "box",
+        "3 ton pickup": "city", "3 ton": "city", "1–3 ton": "city", "1-3 ton": "city",
+        "7 ton pickup": "10_ton", "10 ton": "10_ton", "10-ton truck": "10_ton",
         "low bed": "lowbed", "low-bed": "lowbed",
         "double trailer": "double_trailer",
-        "reefer": "reefer",
+        "reefer": "reefer", "refrigerated": "reefer",
         "flat bed": "flatbed", "flat-bed": "flatbed",
-        "tipper": "tipper"
+        "tipper": "tipper", "dump": "tipper",
     }
     return aliases.get(s, s)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Rates loader
-# CSV columns: origin,destination,truck_type,general_rate,chemical_rate
-# Example row: Mussafah,AUH Airport,flatbed,850,950
-# You can set origin="*" to apply a default for ANY origin→that destination.
+# Robust rates loader
+# Accepts:
+#   A) origin,destination,truck_type,general_rate,chemical_rate
+#   B) Delivery Locations,Vehicle Type,Price  (maps Hazmat FB -> chemical)
+# Detects delimiters: comma / semicolon / tab
 # ──────────────────────────────────────────────────────────────────────────────
+def _detect_delimiter(sample: str) -> str:
+    # Prefer the one yielding the most columns in the header
+    candidates = [",", ";", "\t", "|"]
+    best = ","
+    best_cols = 1
+    first_line = sample.splitlines()[0] if sample else ""
+    for d in candidates:
+        cols = [c for c in first_line.split(d) if c.strip() != ""]
+        if len(cols) > best_cols:
+            best_cols = len(cols)
+            best = d
+    return best
+
+def _read_text(path: str) -> str:
+    with open(path, "r", encoding="utf-8-sig", errors="ignore") as f:
+        txt = f.read()
+    # If each line looks like "a,b,c", strip the outer quotes
+    lines = txt.splitlines()
+    if lines and all(len(ln) > 2 and ln[0] == '"' and ln[-1] == '"' for ln in lines[: min(10, len(lines))]):
+        txt = "\n".join(ln[1:-1] for ln in lines)
+    return txt
+
 def load_rates():
     rates = {}
     csv_path = os.path.join(app.root_path, "transport_rates.csv")
     if not os.path.exists(csv_path):
         print("[transport] rates CSV not found:", csv_path)
         return rates
-    with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            origin = norm_city(row.get("origin"))
-            dest   = norm_city(row.get("destination"))
-            ttype  = norm_truck(row.get("truck_type"))
-            gen    = (row.get("general_rate") or "").strip()
-            haz    = (row.get("chemical_rate") or "").strip()
-            if not dest or not ttype:
-                continue
-            key = (origin or "*", dest)
-            entry = rates.setdefault(key, {})
-            entry[ttype] = {
-                "general": q2d(gen) if gen else None,
-                "chemical": q2d(haz) if haz else None
-            }
-    print("[transport] rates loaded entries:", len(rates))
+
+    txt = _read_text(csv_path)
+    delim = _detect_delimiter(txt)
+    reader = csv.DictReader(txt.splitlines(), delimiter=delim)
+
+    # Normalize header names → our internal keys
+    header_map = {}
+    for k in (reader.fieldnames or []):
+        lk = (k or "").strip().lower()
+        if lk in ("origin",): header_map[k] = "origin"
+        elif lk in ("destination", "delivery locations", "delivery location", "city", "to"): header_map[k] = "destination"
+        elif lk in ("truck_type", "vehicle type", "truck type"): header_map[k] = "truck_type"
+        elif lk in ("general_rate", "general", "price", "rate"): header_map[k] = "general_rate"
+        elif lk in ("chemical_rate", "chemical", "hazmat", "hazmat rate"): header_map[k] = "chemical_rate"
+        else: header_map[k] = lk
+
+    count_rows = 0
+    count_pairs = 0
+    for row in reader:
+        count_rows += 1
+
+        # remap keys
+        r = { header_map.get(k,k): (row.get(k,"") if row.get(k) is not None else "") for k in row }
+
+        origin = norm_city(r.get("origin") or "*")
+        dest   = norm_city(r.get("destination"))
+        t_raw  = r.get("truck_type") or ""
+        ttype  = norm_truck(t_raw)
+
+        gen_raw = (r.get("general_rate") or "").strip()
+        haz_raw = (r.get("chemical_rate") or "").strip()
+
+        # If it's the 3-column list and 'Hazmat FB', put that into chemical
+        if not gen_raw and not haz_raw and t_raw.strip().lower() == "hazmat fb" and r.get("general_rate") is not None:
+            haz_raw = (r.get("general_rate") or "").strip()
+
+        # If it's the 3-column list and NOT hazmat: it's general
+        if not gen_raw and not haz_raw and r.get("general_rate") is not None and t_raw.strip().lower() != "hazmat fb":
+            gen_raw = (r.get("general_rate") or "").strip()
+
+        if not dest or not ttype:
+            continue
+
+        key = (origin or "*", dest)
+        truck_map = rates.setdefault(key, {})
+        cell = truck_map.setdefault(ttype, {"general": None, "chemical": None})
+
+        if gen_raw:
+            cell["general"] = q2d(gen_raw)
+            count_pairs += 1
+        if haz_raw:
+            cell["chemical"] = q2d(haz_raw)
+            count_pairs += 1
+
+    print(f"[transport] rates rows read: {count_rows}, price cells loaded: {count_pairs}, keys: {len(rates)}")
     return rates
 
 RATES = load_rates()
@@ -149,6 +210,20 @@ def add_row(table, item, unit_rate="", amount=""):
 def home():
     return render_template("transport_form.html")
 
+# Quick debug hook: /rates_debug?from=Mussafah&to=Mafraq&truck=flatbed&cargo=general
+@app.route("/rates_debug")
+def rates_debug():
+    o = request.args.get("from", "")
+    d = request.args.get("to", "")
+    t = request.args.get("truck", "")
+    c = (request.args.get("cargo", "general") or "general").lower()
+    val = lookup_rate(o, d, t, c)
+    return jsonify({
+        "query": {"from": o, "to": d, "truck": t, "cargo": c},
+        "normalized": {"from": norm_city(o), "to": norm_city(d), "truck": norm_truck(t)},
+        "result": (float(val) if val is not None else None)
+    })
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Generate Transportation Quotation (uses CSV rates)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -163,7 +238,6 @@ def generate_transport():
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
-    # labels
     truck_labels = {
         "flatbed": "Flatbed (22–25T)",
         "box": "Box / Curtainside (5–10T)",
@@ -176,16 +250,14 @@ def generate_transport():
     }
     trip_label = {"one_way": "One Way", "back_load": "Back Load", "multi": "Multiple"}.get(trip_type, "One Way")
 
-    # Build legs (origin → [stops] → destination)
+    # Build legs
     waypoints = [origin] + stops + [destination]
     legs = [(waypoints[i], waypoints[i+1]) for i in range(len(waypoints)-1) if waypoints[i] and waypoints[i+1]]
     if not legs:
         legs = [(origin, destination)]
 
-    # Back-load multiplier (+60% same day per your T&C)
     backload_mult = DEC("1.60") if trip_type == "back_load" else DEC("1.00")
 
-    # Normalize chosen trucks
     chosen_trucks = []
     for t, q in zip(truck_types, truck_qty_list):
         nt = norm_truck(t)
@@ -196,7 +268,6 @@ def generate_transport():
         if nt and qty > 0:
             chosen_trucks.append((nt, qty))
 
-    # Compute totals
     subtotal = DEC("0")
     per_truck_rows = []
 
@@ -205,18 +276,18 @@ def generate_transport():
         combined = DEC("0")
         leg_descs = []
         missing_any = False
+
         for (frm, to) in legs:
             rate = lookup_rate(frm, to, t, cargo_type)
-            if rate is None:
-                # Fallback to destination-only default
-                rate = lookup_rate("*", to, t, cargo_type)
             if rate is None:
                 missing_any = True
                 leg_descs.append(f"{frm} → {to}: N/A")
                 continue
+
             leg_rate = (rate * backload_mult)
             combined += (leg_rate * qty)
             leg_descs.append(f"{frm} → {to}: AED {money(leg_rate)} x {qty}")
+
         if missing_any and combined == 0:
             per_truck_rows.append((f"{label} x {qty} — (rate missing for one or more legs)", "N/A", ""))
         else:
@@ -233,20 +304,17 @@ def generate_transport():
     vat         = pre_vat * DEC("0.05")
     grand_total = pre_vat + vat
 
-    # Summaries
     truck_summary = "; ".join(f"{truck_labels.get(t, t.title())} x {qty}" for t, qty in chosen_trucks) or "N/A"
     route_str = " \u2192 ".join([p for p in [origin] + stops + [destination] if p]) or "N/A"
     general_flag  = "General Cargo" if cargo_type in ("general", "container") else ""
     chemical_flag = "Chemical Load" if cargo_type == "chemical" else ""
 
-    # Open template
     tpl_path = os.path.join("templates", "TransportQuotation.docx")
     if not os.path.exists(tpl_path):
         return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
 
     doc = Document(tpl_path)
 
-    # Replace simple placeholders anywhere
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
         "{{FROM}}":       origin or "N/A",
@@ -257,34 +325,30 @@ def generate_transport():
         "{{TRIP_TYPE}}":  trip_label,
         "{{CICPA}}":      cicpa,
         "{{ROUTE}}":      route_str,
-        "{{UNIT_RATE}}":  money(subtotal),   # optional header slot
-        "{{TOTAL_FEE}}":  money(grand_total) # optional header slot
+        "{{UNIT_RATE}}":  money(subtotal),
+        "{{TOTAL_FEE}}":  money(grand_total)
     }
     replace_everywhere(doc, placeholders)
 
-    # Rewrite "Quotation Details" table to only show the chosen items with prices
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
-
         add_row(table, f"Trip Type: {trip_label}", "", "")
         add_row(table, f"Route: {route_str}", "", "")
         add_row(table, f"Cargo Type: {cargo_type.title()}", "", "")
         add_row(table, f"CICPA Required: {cicpa}", "", "")
-
         if per_truck_rows:
             for desc, unit_rate, amount in per_truck_rows:
                 add_row(table, desc, unit_rate, amount)
         else:
             add_row(table, "No truck types selected", "", "")
-
         add_row(table, "Subtotal (trips)", "", f"AED {money(subtotal)}")
         add_row(table, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
         add_row(table, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
         add_row(table, "VAT 5%", "", f"AED {money(vat)}")
         add_row(table, "Grand Total", "", f"AED {money(grand_total)}")
     else:
-        # Fallback if table structure changes
+        # Fallback if the template table changes
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
@@ -301,7 +365,6 @@ def generate_transport():
         add_row(small, "VAT 5%", "", f"AED {money(vat)}")
         add_row(small, "Grand Total", "", f"AED {money(grand_total)}")
 
-    # Stream file
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
