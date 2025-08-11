@@ -905,8 +905,9 @@ def chat():
         return jsonify({"reply": "Chamber 3 is used by food clients and fast-moving items."})
 
     # --- Chamber Mapping (Unified) ---
-    if match([r"\bch\d+\b", r"chamber\s*\d+", r"who.*in.*ch\d+", r"who.*in.*chamber\s*\d+"]):
-    ch_num = re.search(r"ch(?:amber)?\s*(\d+)", message)if ch_num:
+if match([r"\bch\d+\b", r"chamber\s*\d+", r"who.*in.*ch\d+", r"who.*in.*chamber\s*\d+"]):
+    ch_num = re.search(r"ch(?:amber)?\s*(\d+)", message)
+    if ch_num:
         chamber = int(ch_num.group(1))
         clients = {
             1: "Khalifa University",
