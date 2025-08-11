@@ -16,7 +16,7 @@ def generate():
     volume = float(request.form.get("volume", 0))
     days = int(request.form.get("days", 0))
     include_wms = request.form.get("wms", "No") == "Yes"
-    email = request.form.get("email", "")
+    commodity = request.form.get("commodity", "")
     today_str = datetime.today().strftime("%d %b %Y")
 
     # Pick template based on storage_type
