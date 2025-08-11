@@ -1,28 +1,93 @@
 from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
 from datetime import datetime
-import io, os, re
+from decimal import Decimal, ROUND_HALF_UP
+import io, os, re, csv
 
 app = Flask(__name__)
 
-# ------------------------------------------------------------
-# Helpers for DOCX placeholder replacement & table editing
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Money helpers
+# ──────────────────────────────────────────────────────────────────────────────
+DEC = Decimal  # shorthand
+
+def q2d(x, default="0"):
+    try:
+        return DEC(str(x))
+    except Exception:
+        return DEC(default)
+
+def money(d):
+    if d is None:
+        return ""
+    if not isinstance(d, Decimal):
+        d = q2d(d, "0")
+    return f"{d.quantize(DEC('0.01'), rounding=ROUND_HALF_UP):,.2f}"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Rates loader
+# CSV format (UTF‑8): origin,destination,truck_type,general_rate,chemical_rate
+# Example rows:
+# Mussafah,AUH Airport,flatbed,850,950
+# Alain Industrial Area,AUH Airport,box,650,750
+# Use origin="*" to define a default for ANY origin → destination.
+# ──────────────────────────────────────────────────────────────────────────────
+def load_rates():
+    rates = {}
+    csv_path = os.path.join(app.root_path, "transport_rates.csv")
+    if not os.path.exists(csv_path):
+        return rates  # empty; app still runs and flags "N/A"
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            origin = (row.get("origin") or "").strip()
+            dest   = (row.get("destination") or "").strip()
+            ttype  = (row.get("truck_type") or "").strip().lower()
+            gen    = (row.get("general_rate") or "").strip()
+            haz    = (row.get("chemical_rate") or "").strip()
+            if not dest or not ttype:
+                continue
+            key = (origin or "*", dest)
+            entry = rates.setdefault(key, {})
+            entry[ttype] = {
+                "general": q2d(gen) if gen else None,
+                "chemical": q2d(haz) if haz else None
+            }
+    return rates
+
+RATES = load_rates()
+
+def lookup_rate(origin, destination, truck_type, cargo_type):
+    """Find a rate by (origin,destination,truck_type,cargo_type).
+       Tries exact pair, then ('*', dest), then (origin, '*')."""
+    cargo_key = "chemical" if cargo_type == "chemical" else "general"
+    # exact
+    for key in ((origin, destination), ("*", destination), (origin, "*")):
+        if key in RATES:
+            truck_map = RATES[key]
+            data = truck_map.get(truck_type)
+            if data:
+                val = data.get(cargo_key) or data.get("general")
+                if val is not None:
+                    return val
+    return None
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Word helpers
+# ──────────────────────────────────────────────────────────────────────────────
 def replace_in_paragraph(paragraph, mapping):
-    """Replace {{PLACEHOLDER}} across runs in a paragraph."""
     if not paragraph.runs:
         return
-    full = "".join(run.text for run in paragraph.runs)
-    new = full
+    original = "".join(r.text for r in paragraph.runs)
+    replaced = original
     for k, v in mapping.items():
-        new = new.replace(k, v)
-    if new != full:
+        replaced = replaced.replace(k, v)
+    if replaced != original:
         for r in paragraph.runs:
             r.text = ""
-        paragraph.runs[0].text = new
+        paragraph.runs[0].text = replaced
 
 def replace_everywhere(doc, mapping):
-    """Replace placeholders in all paragraphs and table cells."""
     for p in doc.paragraphs:
         replace_in_paragraph(p, mapping)
     for table in doc.tables:
@@ -32,49 +97,36 @@ def replace_everywhere(doc, mapping):
                     replace_in_paragraph(p, mapping)
 
 def find_details_table(doc):
-    """
-    Try to find the Quotation Details table by header row containing:
-    'Item' + 'Unit Rate' + 'Amount' (order-insensitive).
-    If not found, return None.
-    """
+    """Find a table whose header row contains Item + Unit Rate + Amount."""
     for tbl in doc.tables:
         if not tbl.rows:
             continue
-        header_text = " | ".join(c.text.strip() for c in tbl.rows[0].cells)
-        if ("Item" in header_text and "Unit Rate" in header_text and "Amount" in header_text):
+        header = " | ".join(c.text.strip() for c in tbl.rows[0].cells)
+        if "Item" in header and "Unit Rate" in header and "Amount" in header:
             return tbl
     return None
 
 def clear_table_body(table):
-    """Remove all rows except the header row."""
     while len(table.rows) > 1:
-        r = table.rows[1]
-        # python-docx internal XML removal
-        table._tbl.remove(r._tr)
+        table._tbl.remove(table.rows[1]._tr)
 
 def add_row(table, item, unit_rate="", amount=""):
     row = table.add_row()
     cells = row.cells
-    # The table is expected to have at least 3 cols: Item | Unit Rate | Amount
-    cells[0].text = str(item) if item is not None else ""
-    # guard in case template merged columns weirdly
-    if len(cells) > 1:
-        cells[1].text = str(unit_rate) if unit_rate is not None else ""
-    if len(cells) > 2:
-        cells[2].text = str(amount) if amount is not None else ""
+    if len(cells) >= 1: cells[0].text = str(item)
+    if len(cells) >= 2: cells[1].text = str(unit_rate)
+    if len(cells) >= 3: cells[2].text = str(amount)
 
-
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
 # UI
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/")
 def home():
     return render_template("transport_form.html")
 
-
-# ------------------------------------------------------------
-# Generate Transportation Quotation (only chosen inputs)
-# ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Generate Transportation Quotation (reflects ONLY choices + rates)
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
     origin         = (request.form.get("origin") or "").strip()
@@ -83,11 +135,10 @@ def generate_transport():
     cargo_type     = (request.form.get("cargo_type") or "general").strip().lower()
     cicpa          = (request.form.get("cicpa") or "No").strip()
     stops          = [s.strip() for s in request.form.getlist("additional_cities[]") if s.strip()]
-
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
-    # Labels used in the document summary
+    # human labels
     truck_labels = {
         "flatbed":         "Flatbed (22–25T)",
         "box":             "Box / Curtainside (5–10T)",
@@ -98,31 +149,75 @@ def generate_transport():
         "10_ton":          "10-Ton Truck",
         "lowbed":          "Lowbed",
     }
+    trip_label = {"one_way": "One Way", "back_load": "Back Load", "multi": "Multiple"}.get(trip_type, "One Way")
 
-    # Summaries
-    truck_summary_parts = []
-    chosen_trucks = []  # list of tuples (label, qty)
+    # Build route legs
+    waypoints = [origin] + stops + [destination]
+    legs = [(waypoints[i], waypoints[i+1]) for i in range(len(waypoints)-1) if waypoints[i] and waypoints[i+1]]
+    if not legs:
+        legs = [(origin, destination)]
+
+    # Multiplier for back load (per your T&C: +60% same-day)
+    backload_mult = DEC("1.60") if trip_type == "back_load" else DEC("1.00")
+
+    # Compute pricing per truck type
+    chosen_trucks = []
     for t, q in zip(truck_types, truck_qty_list):
-        t = (t or "").strip()
+        t = (t or "").strip().lower()
         q = (q or "").strip()
         if not t or not q:
             continue
         try:
             qty = int(float(q))
         except Exception:
-            qty = q
+            qty = 0
+        if qty <= 0:
+            continue
+        chosen_trucks.append((t, qty))
+
+    # Totals across all legs
+    subtotal = DEC("0")
+    per_truck_rows = []  # (desc, unit_rate_str, amount_str)
+
+    # For multiple stops, price each leg and sum. Show aggregate per truck type.
+    for t, qty in chosen_trucks:
         label = truck_labels.get(t, t.title())
-        truck_summary_parts.append(f"{label} x {qty}")
-        chosen_trucks.append((label, qty))
+        aggregated = DEC("0")
+        missing_any = False
+        leg_descs = []
+        for (frm, to) in legs:
+            rate = lookup_rate(frm, to, t, cargo_type)
+            if rate is None:
+                # try destination-only (in case your sheet is destination based)
+                rate = lookup_rate("*", to, t, cargo_type)
+            if rate is None:
+                missing_any = True
+                leg_descs.append(f"{frm} → {to}: N/A")
+                continue
+            leg_rate = (rate * backload_mult)  # backload if selected
+            aggregated += (leg_rate * qty)
+            leg_descs.append(f"{frm} → {to}: AED {money(leg_rate)} x {qty}")
+        if missing_any and aggregated == 0:
+            per_truck_rows.append((f"{label} x {qty} — (rate missing for one or more legs)", "N/A", ""))
+        else:
+            per_truck_rows.append((f"{label} x {qty} — " + " | ".join(leg_descs),
+                                   f"AED {money((aggregated/qty) if qty else aggregated)}",
+                                   f"AED {money(aggregated)}"))
+            subtotal += aggregated
 
-    truck_summary = "; ".join(truck_summary_parts) if truck_summary_parts else "N/A"
-    route_parts = [p for p in [origin] + stops + [destination] if p]
-    route_str = " \u2192 ".join(route_parts) if route_parts else "N/A"  # nice arrow
+    # Fees
+    total_trips = len(legs) * max(sum(qty for _, qty in chosen_trucks), 0)
+    env_fixed = DEC("10.00") * DEC(str(total_trips))  # AED 10 / trip / truck
+    env_percent = (subtotal * DEC("0.0015"))          # 0.15% of invoice value
+    pre_vat_total = subtotal + env_fixed + env_percent
+    vat = pre_vat_total * DEC("0.05")
+    grand_total = pre_vat_total + vat
 
-    # Cargo flags (if your template uses them)
+    # Build friendly summaries
+    truck_summary = "; ".join(f"{truck_labels.get(t, t.title())} x {qty}" for t, qty in chosen_trucks) or "N/A"
+    route_str = " \u2192 ".join([p for p in [origin] + stops + [destination] if p]) or "N/A"
     general_flag  = "General Cargo" if cargo_type in ("general", "container") else ""
     chemical_flag = "Chemical Load" if cargo_type == "chemical" else ""
-    trip_label = {"one_way": "One Way", "back_load": "Back Load", "multi": "Multiple"}.get(trip_type, "One Way")
 
     # Open template
     tpl_path = os.path.join("templates", "TransportQuotation.docx")
@@ -131,7 +226,7 @@ def generate_transport():
 
     doc = Document(tpl_path)
 
-    # Replace simple placeholders anywhere in the file
+    # Replace simple placeholders anywhere in document
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
         "{{FROM}}":       origin or "N/A",
@@ -141,55 +236,59 @@ def generate_transport():
         "{{CHEMICAL}}":   chemical_flag,
         "{{TRIP_TYPE}}":  trip_label,
         "{{CICPA}}":      cicpa,
+        "{{ROUTE}}":      route_str,
+        "{{UNIT_RATE}}":  money(subtotal),  # in case your header uses it
+        "{{TOTAL_FEE}}":  money(grand_total)
     }
     replace_everywhere(doc, placeholders)
 
-    # Now rewrite the Quotation Details table to ONLY reflect selections
+    # Rebuild Quotation Details table to reflect ONLY the chosen items + computed rates
     table = find_details_table(doc)
     if table:
-        # 1) wipe all rows except header
         clear_table_body(table)
 
-        # 2) add rows that mirror the UI selections ONLY
+        # Header context rows
         add_row(table, f"Trip Type: {trip_label}", "", "")
-        if stops:
-            add_row(table, f"Route: {origin} \u2192 {' \u2192 '.join(stops)} \u2192 {destination}", "", "")
-        else:
-            add_row(table, f"Route: {origin} \u2192 {destination}", "", "")
+        add_row(table, f"Route: {route_str}", "", "")
         add_row(table, f"Cargo Type: {cargo_type.title()}", "", "")
         add_row(table, f"CICPA Required: {cicpa}", "", "")
 
-        # Truck lines (no rates yet; only reflect selections)
-        if chosen_trucks:
-            for label, qty in chosen_trucks:
-                add_row(table, f"{label} x {qty}", "", "")
+        # Per-truck computed rows
+        if per_truck_rows:
+            for desc, unit_rate, amount in per_truck_rows:
+                add_row(table, desc, unit_rate, amount)
         else:
             add_row(table, "No truck types selected", "", "")
 
-        # Optional final row for totals (left blank until pricing engine is added)
-        add_row(table, "Total Fee", "", "")
+        # Totals and fees
+        add_row(table, "Subtotal (trips)", "", f"AED {money(subtotal)}")
+        add_row(table, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
+        add_row(table, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
+        add_row(table, "VAT 5%", "", f"AED {money(vat)}")
+        add_row(table, "Grand Total", "", f"AED {money(grand_total)}")
     else:
-        # If the table wasn't found, add a small section to the end so you still get a clean output
-        doc.add_paragraph("Quotation Details")
+        # If no table found, append a small summary block
+        doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
-        hdr[0].text = "Item"; hdr[1].text = "Unit Rate"; hdr[2].text = "Amount (AED)"
+        hdr[0].text, hdr[1].text, hdr[2].text = "Item", "Unit Rate", "Amount (AED)"
         add_row(small, f"Trip Type: {trip_label}", "", "")
         add_row(small, f"Route: {route_str}", "", "")
         add_row(small, f"Cargo Type: {cargo_type.title()}", "", "")
         add_row(small, f"CICPA Required: {cicpa}", "", "")
-        for label, qty in chosen_trucks:
-            add_row(small, f"{label} x {qty}", "", "")
-        add_row(small, "Total Fee", "", "")
+        for desc, unit_rate, amount in per_truck_rows:
+            add_row(small, desc, unit_rate, amount)
+        add_row(small, "Subtotal (trips)", "", f"AED {money(subtotal)}")
+        add_row(small, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
+        add_row(small, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
+        add_row(small, "VAT 5%", "", f"AED {money(vat)}")
+        add_row(small, "Grand Total", "", f"AED {money(grand_total)}")
 
-    # Stream back to browser
+    # Stream file
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
-
-    name_from = (origin or "Origin").replace(" ", "")
-    name_to   = (destination or "Destination").replace(" ", "")
-    download_name = f"Transport_Quotation_{name_from}To{name_to}.docx"
+    download_name = f"Transport_Quotation_{(origin or 'Origin').replace(' ','')}To{(destination or 'Destination').replace(' ','')}.docx"
     return send_file(buf, as_attachment=True, download_name=download_name)
 
     app.run(host="0.0.0.0", port=port, debug=True)
