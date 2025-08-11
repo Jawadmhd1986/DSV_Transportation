@@ -39,30 +39,46 @@ def norm_city(s: str) -> str:
 
 def norm_truck(s: str) -> str:
     s = (s or "").strip().lower()
+
+    # keyword based (accepts many UI/CSV variants)
+    if "flat" in s:
+        return "flatbed"
+    if "curtain" in s or "box" in s:
+        return "box"
+    if "reefer" in s or "refrigerated" in s or "chiller" in s:
+        return "reefer"
+    if "lowbed" in s or "low bed" in s:
+        return "lowbed"
+    if "double" in s or "tandem" in s:
+        return "double_trailer"
+    if "tipper" in s or "dump" in s:
+        return "tipper"
+    if re.search(r"\b(1|2|3)\s*ton\b", s) or "city" in s:
+        return "city"
+    if re.search(r"\b(7|10)\s*ton\b", s):
+        return "10_ton"
+
+    # specific alias fallbacks
     aliases = {
-        "curtainside": "box",
-        "box / curtainside (5–10 tons)": "box",
-        "box/curtainside": "box",
+        "flatbed (22-25 tons)": "flatbed",
+        "flatbed (22-25t)": "flatbed",
+        "flatbed (22–25 tons)": "flatbed",
+        "flatbed (22–25t)": "flatbed",
         "box / curtainside (5-10 tons)": "box",
-        "3 ton": "city",
-        "1-3 ton": "city",
-        "city truck": "city",
-        "10 ton": "10_ton",
-        "10-ton truck": "10_ton",
-        "low bed": "lowbed",
-        "low-bed": "lowbed",
-        "double trailer": "double_trailer",
-        "reefer": "reefer",
-        "flat bed": "flatbed",
-        "flat-bed": "flatbed",
-        "tipper": "tipper",
+        "box / curtainside (5–10 tons)": "box",
+        "3 ton pickup": "city",
+        "7 ton pickup": "10_ton",
+        "curtain side trailer": "box",
+        "hazmat fb": "flatbed",
     }
     return aliases.get(s, s)
 
 # ---------------------------
 # Rates loader
-# CSV columns: origin,destination,truck_type,general_rate,chemical_rate
-# You can set origin="*" to apply a default for ANY origin->that destination.
+# Supports BOTH:
+# 1) origin,destination,truck_type,general_rate,chemical_rate
+# 2) Delivery Locations,Vehicle Type,Price  (assumes origin=Mussafah)
+#    and treats "Hazmat FB" as chemical rate for flatbed.
 # ---------------------------
 def load_rates():
     rates = {}
@@ -70,22 +86,63 @@ def load_rates():
     if not os.path.exists(csv_path):
         print("[transport] rates CSV not found:", csv_path)
         return rates
+
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            return rates
+
+        # normalize header names
+        headers = {h.lower().strip(): h for h in reader.fieldnames}
+
+        # helper to read a field by synonyms
+        def get(row, *names):
+            for n in names:
+                key = headers.get(n)
+                if key and key in row:
+                    return row[key]
+            return None
+
+        # choose mode
+        has_matrix = headers.get("origin") or headers.get("from")
+        has_destination = headers.get("destination") or headers.get("to") or headers.get("delivery locations")
+        has_truck = headers.get("truck_type") or headers.get("vehicle type")
+        has_price = headers.get("price") or headers.get("rate") or headers.get("general_rate")
+
         for row in reader:
-            origin = norm_city(row.get("origin"))
-            dest = norm_city(row.get("destination"))
-            ttype = norm_truck(row.get("truck_type"))
-            gen = (row.get("general_rate") or "").strip()
-            haz = (row.get("chemical_rate") or "").strip()
-            if not dest or not ttype:
+            # extract values with synonyms
+            origin_raw = get(row, "origin", "from")
+            dest_raw = get(row, "destination", "to", "delivery locations")
+            truck_raw = get(row, "truck_type", "vehicle type", "truck")
+            gen_raw = get(row, "general_rate", "price", "rate")
+            haz_raw = get(row, "chemical_rate", "hazmat_rate")
+
+            # mode 2: single-origin sheet without explicit origin
+            if not has_matrix and origin_raw in (None, ""):
+                origin_raw = "Mussafah"
+
+            origin = norm_city(origin_raw)
+            dest = norm_city(dest_raw)
+            ttype_norm = norm_truck(truck_raw or "")
+
+            if not dest or not ttype_norm:
                 continue
+
+            # if no explicit chemical rate but vehicle name contains hazmat -> treat as chemical
+            gen_val = (gen_raw or "").strip()
+            haz_val = (haz_raw or "").strip()
+            is_haz_truck = bool(truck_raw and "hazmat" in truck_raw.lower())
+
+            gen = q2d(gen_val) if gen_val and not is_haz_truck else (None if is_haz_truck else q2d(gen_val) if gen_val else None)
+            chem = q2d(haz_val) if haz_val else (q2d(gen_val) if is_haz_truck and gen_val else None)
+
             key = (origin or "*", dest)
             entry = rates.setdefault(key, {})
-            entry[ttype] = {
-                "general": q2d(gen) if gen else None,
-                "chemical": q2d(haz) if haz else None,
+            entry[ttype_norm] = {
+                "general": gen,
+                "chemical": chem,
             }
+
     print("[transport] rates loaded entries:", len(rates))
     return rates
 
@@ -170,7 +227,8 @@ def home():
 
 # ---------------------------
 # Generate Transportation Quotation
-# (No VAT, No Environmental fees in calculation or table)
+# Only priced rows + bold 12pt GRAND TOTAL.
+# No VAT/fees in calc or table.
 # ---------------------------
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
@@ -184,11 +242,11 @@ def generate_transport():
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
     truck_labels = {
-        "flatbed": "Flatbed (22–25T)",
-        "box": "Box / Curtainside (5–10T)",
-        "reefer": "Refrigerated (3–12T)",
-        "city": "City (1–3T)",
-        "tipper": "Tipper / Dump (15–20T)",
+        "flatbed": "Flatbed (22-25T)",
+        "box": "Box / Curtainside (5-10T)",
+        "reefer": "Refrigerated (3-12T)",
+        "city": "City (1-3T)",
+        "tipper": "Tipper / Dump (15-20T)",
         "double_trailer": "Double Trailer",
         "10_ton": "10-Ton Truck",
         "lowbed": "Lowbed",
@@ -268,29 +326,27 @@ def generate_transport():
     if table:
         clear_table_body(table)
 
-        # Only show priced rows and totals (no empty meta rows, no VAT, no environmental items)
+        # only priced rows
         for desc, unit_rate, amount in per_truck_rows:
-            add_row(table, desc, unit_rate, amount)
+            if amount and amount != "":
+                add_row(table, desc, unit_rate, amount)
 
         add_row(table, "Subtotal (trips)", "", f"AED {money(subtotal)}")
 
         # Grand Total (same as subtotal now)
         grand_row = add_row(table, "GRAND TOTAL", "", f"AED {money(subtotal)}")
-        # Style "GRAND TOTAL" label and amount cell
         try:
-            label_cell = grand_row.cells[0]
-            amount_cell = grand_row.cells[2]
-            bold_12(label_cell)
-            bold_12(amount_cell)
+            bold_12(grand_row.cells[0])
+            bold_12(grand_row.cells[2])
         except Exception:
             pass
     else:
-        # Fallback: basic table
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
         hdr[0].text, hdr[1].text, hdr[2].text = "Item", "Unit Rate", "Amount (AED)"
         for desc, unit_rate, amount in per_truck_rows:
-            add_row(small, desc, unit_rate, amount)
+            if amount and amount != "":
+                add_row(small, desc, unit_rate, amount)
         add_row(small, "Subtotal (trips)", "", f"AED {money(subtotal)}")
         grand_row = add_row(small, "GRAND TOTAL", "", f"AED {money(subtotal)}")
         try:
