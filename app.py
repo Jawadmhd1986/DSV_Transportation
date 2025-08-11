@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 import io, os, re, csv
@@ -53,11 +55,7 @@ def norm_truck(s: str) -> str:
     return aliases.get(s, s)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Robust rates loader
-# Accepts:
-#   A) origin,destination,truck_type,general_rate,chemical_rate
-#   B) Delivery Locations,Vehicle Type,Price  (maps Hazmat FB -> chemical)
-# Detects delimiters: comma / semicolon / tab
+# Rates loader (supports your 3‑column list & 5‑column matrix)
 # ──────────────────────────────────────────────────────────────────────────────
 def _detect_delimiter(sample: str) -> str:
     candidates = [",", ";", "\t", "|"]
@@ -74,7 +72,6 @@ def _detect_delimiter(sample: str) -> str:
 def _read_text(path: str) -> str:
     with open(path, "r", encoding="utf-8-sig", errors="ignore") as f:
         txt = f.read()
-    # If each line is quoted like "a,b,c", strip outer quotes
     lines = txt.splitlines()
     if lines and all(len(ln) > 2 and ln[0] == '"' and ln[-1] == '"' for ln in lines[: min(10, len(lines))]):
         txt = "\n".join(ln[1:-1] for ln in lines)
@@ -91,7 +88,6 @@ def load_rates():
     delim = _detect_delimiter(txt)
     reader = csv.DictReader(txt.splitlines(), delimiter=delim)
 
-    # Normalize headers
     header_map = {}
     for k in (reader.fieldnames or []):
         lk = (k or "").strip().lower()
@@ -113,7 +109,7 @@ def load_rates():
         gen_raw = (r.get("general_rate") or "").strip()
         haz_raw = (r.get("chemical_rate") or "").strip()
 
-        # 3‑column list handling
+        # map 3‑column format (Price) to general or chemical
         if not gen_raw and not haz_raw and t_raw.strip().lower() == "hazmat fb" and r.get("general_rate") is not None:
             haz_raw = (r.get("general_rate") or "").strip()
         if not gen_raw and not haz_raw and r.get("general_rate") is not None and t_raw.strip().lower() != "hazmat fb":
@@ -137,8 +133,6 @@ RATES = load_rates()
 def lookup_rate(origin, destination, truck_type, cargo_type):
     cargo_key = "chemical" if (cargo_type or "").lower() == "chemical" else "general"
     o = norm_city(origin); d = norm_city(destination); t = norm_truck(truck_type)
-
-    # Priority: (origin,destination) → ('*',destination) → (origin,'*')
     for key in ((o, d), ("*", d), (o, "*")):
         if key in RATES:
             data = RATES[key].get(t)
@@ -193,15 +187,27 @@ def add_row(table, item, unit_rate="", amount=""):
     if len(cells) >= 3: cells[2].text = str(amount)
     return row
 
-def emphasize_row(row, font_pt=14):
-    """Bold + bigger font for emphasis (Grand Total)."""
+def emphasize_row(row, font_pt=12):  # ← 12 pt as requested
     for i, cell in enumerate(row.cells):
         for p in cell.paragraphs:
-            # align last column (amount) to the right for clarity
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if i == (len(row.cells)-1) else WD_ALIGN_PARAGRAPH.LEFT
             for run in p.runs:
                 run.font.bold = True
                 run.font.size = Pt(font_pt)
+
+def set_table_width_pct(table, pct=100):
+    """
+    Force a table to occupy a percentage of the page width.
+    Word uses fiftieths of a percent, so 100% = 5000.
+    """
+    w = str(int(pct * 50))  # 100% -> 5000
+    tbl = table._tbl
+    tblPr = tbl.tblPr or OxmlElement('w:tblPr')
+    tbl.tblPr = tblPr
+    tblW = tblPr.tblW or OxmlElement('w:tblW')
+    tblW.set(qn('w:type'), 'pct')
+    tblW.set(qn('w:w'), w)
+    tblPr.append(tblW)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # UI
@@ -210,7 +216,6 @@ def emphasize_row(row, font_pt=14):
 def home():
     return render_template("transport_form.html")
 
-# Quick debug: /rates_debug?from=Mussafah&to=Mafraq&truck=flatbed&cargo=general
 @app.route("/rates_debug")
 def rates_debug():
     o = request.args.get("from", "")
@@ -225,7 +230,7 @@ def rates_debug():
     })
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Generate Transportation Quotation (NO VAT in table or totals)
+# Generate Transportation Quotation (NO VAT; bold 12pt GRAND TOTAL; tables same width)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
@@ -295,9 +300,9 @@ def generate_transport():
     total_trips = len(legs) * sum(q for _, q in chosen_trucks) if chosen_trucks else 0
     env_fixed   = DEC("10.00") * DEC(str(total_trips))    # AED 10 / trip / truck
     env_percent = subtotal * DEC("0.0015")                # 0.15% of invoice value
-    grand_total = subtotal + env_fixed + env_percent      # ← VAT removed entirely
+    grand_total = subtotal + env_fixed + env_percent
 
-    # Summary placeholders used above the table
+    # Summaries above the table
     truck_summary = "; ".join(f"{truck_labels.get(t, t.title())} x {qty}" for t, qty in chosen_trucks) or "N/A"
     route_str = " \u2192 ".join([p for p in [origin] + stops + [destination] if p]) or "N/A"
     general_flag  = "General Cargo" if cargo_type in ("general", "container") else ""
@@ -324,26 +329,21 @@ def generate_transport():
     }
     replace_everywhere(doc, placeholders)
 
-    # Rebuild the "Quotation Details" table:
-    # 👉 ONLY priced truck lines + totals (NO VAT row)
+    # Quotation table → only priced rows + totals
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
-
-        # Add priced truck lines
         for desc, unit_rate, amount in per_truck_rows:
             add_row(table, desc, unit_rate, amount)
-
-        # Totals (no VAT)
         add_row(table, "Subtotal (trips)", "", f"AED {money(subtotal)}")
         add_row(table, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
         add_row(table, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
-
-        # GRAND TOTAL emphasized
         gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
-        emphasize_row(gt_row, font_pt=14)
+        emphasize_row(gt_row, font_pt=12)
+
+        # 🔧 make this table full page width (align size with other tables)
+        set_table_width_pct(table, 100)
     else:
-        # Fallback if template table changes
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
@@ -354,7 +354,12 @@ def generate_transport():
         add_row(small, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
         add_row(small, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
         gt_row = add_row(small, "GRAND TOTAL", "", f"AED {money(grand_total)}")
-        emphasize_row(gt_row, font_pt=14)
+        emphasize_row(gt_row, font_pt=12)
+        set_table_width_pct(small, 100)
+
+    # Also ensure ALL tables (including Detention Rates) are 100% width for visual alignment
+    for t in doc.tables:
+        set_table_width_pct(t, 100)
 
     # Stream file
     buf = io.BytesIO()
