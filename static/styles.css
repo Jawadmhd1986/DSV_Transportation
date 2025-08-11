@@ -1,61 +1,57 @@
 :root {
-  --blue-dsv:       #002664;
+  --blue-dsv: #002664;
   --blue-dsv-light: #4B87E0;
-  --white:          #ffffff;
-  --grey-bg:        #f0f0f0;
-  --text-dsv:       #002664;
+  --white: #ffffff;
+  --text-dsv: #002664;
 }
 
-/* Reset & base */
 *, *::before, *::after {
   box-sizing: border-box;
 }
-body {
+html, body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: var(--grey-bg);
-  height: calc(var(--vh, 1vh) * 100); /* 👈 fix mobile 100vh bug */
+  padding: 0;
+  height: 100%;
   overflow: hidden;
+  font-family: Arial, sans-serif;
+  background: var(--blue-dsv);
 }
 
-/* Full-screen blue background with extra top padding for logo */
 .quote-section {
   position: relative;
   width: 100%;
   height: 100%;
-  background: var(--blue-dsv);
   display: flex;
   justify-content: center;
-  align-items: center;
-  padding: 6rem 2rem 2rem;
+  align-items: flex-start;
+  padding: 5rem 1rem 2rem;
 }
 
-/* Logo floating above the card */
 .dsv-logo {
   position: absolute;
-  top: 1rem;
+  top: 0.5rem;
   left: 50%;
   transform: translateX(-50%);
   width: 140px;
+  z-index: 2;
 }
 
-/* White card styling with reduced top padding */
 .quote-card {
   background: var(--white);
   border-radius: 12px;
-  padding: 1rem 1.5rem 1rem;
+  padding: 1.5rem;
   width: 100%;
-  max-width: 420px;
+  max-width: 450px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  margin-top: 1rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 8rem);
 }
+
 .quote-card h1 {
-  margin: 0 0 1rem;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-  margin-bottom: 1rem;
-  transform: translateY(-1rem);
+  margin: 0 0 1.5rem;
   color: var(--text-dsv);
-  font-size: 1.6rem;
+  font-size: 1.8rem;
   text-align: center;
 }
 .quote-card label {
@@ -63,10 +59,9 @@ body {
   margin: 0.75rem 0 0.25rem;
   font-weight: bold;
   color: var(--text-dsv);
-  font-size: 0.95rem;
 }
-.quote-card select,
-.quote-card input {
+.quote-card input,
+.quote-card select {
   width: 100%;
   padding: 0.6rem 1rem;
   border: 1px solid var(--blue-dsv);
@@ -74,11 +69,62 @@ body {
   font-size: 1rem;
   color: var(--text-dsv);
 }
-.quote-card select:focus,
-.quote-card input:focus {
+.quote-card input:focus,
+.quote-card select:focus {
   outline: none;
   box-shadow: 0 0 0 3px rgba(0,56,155,0.3);
 }
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+.form-row .form-group {
+  flex: 1;
+}
+
+.trip-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.trip-options input {
+  display: none;
+}
+.trip-options label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem;
+  border: 1px solid var(--blue-dsv);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  user-select: none;
+}
+.trip-options label.selected {
+  background: var(--blue-dsv);
+  color: var(--white);
+}
+
+/* Buttons */
+.btn-add {
+  margin: 0.5rem 0;
+  background: none;
+  border: 1px dashed var(--blue-dsv);
+  color: var(--blue-dsv);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.btn-add:hover {
+  background: var(--blue-dsv-light);
+  color: var(--white);
+  border-color: var(--blue-dsv-light);
+}
+
 .btn-generate {
   margin-top: 1.5rem;
   width: 100%;
@@ -88,9 +134,9 @@ body {
   border: none;
   border-radius: 6px;
   font-size: 1.1rem;
+  font-weight: bold;
   cursor: pointer;
   transition: background 0.2s;
-  font-weight: bold;
 }
 .btn-generate:hover {
   background: var(--blue-dsv-light);
@@ -98,9 +144,10 @@ body {
 
 /* Chat toggle button */
 .chat-toggle {
-  position: absolute;
+  position: fixed;
   bottom: 2.5rem;
   right: 2rem;
+  z-index: 3000;
   background: var(--white);
   border: none;
   padding: 0.5rem;
@@ -113,8 +160,8 @@ body {
   height: 36px;
 }
 
-/* Chat widget container */
-.chat-box {
+/* Chat box */
+#chat-box {
   position: fixed;
   bottom: 6rem;
   right: 2rem;
@@ -129,14 +176,12 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 1000;
+  z-index: 2999;
 }
-.chat-box.open {
+#chat-box.open {
   transform: translateY(0);
 }
-
-/* Chat header */
-.chat-header {
+#chat-box .chat-header {
   background: var(--blue-dsv);
   color: var(--white);
   padding: 0.8rem 1rem;
@@ -145,23 +190,19 @@ body {
   align-items: center;
   font-weight: bold;
 }
-.chat-header button {
+#chat-close {
   background: none;
   border: none;
   color: var(--white);
   font-size: 1.2rem;
   cursor: pointer;
 }
-
-/* Chat message area */
-.chat-messages {
+#chat-messages {
   flex: 1;
   padding: 0.75rem 1rem;
   background: #f9f9f9;
-  overflow-y: auto;
 }
 
-/* Message bubbles */
 .message {
   margin-bottom: 0.6rem;
   clear: both;
@@ -181,28 +222,19 @@ body {
   border-radius: 16px 16px 16px 4px;
   float: left;
   max-width: 80%;
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.message.bot .bubble a {
-  color: #002664;
-  text-decoration: underline;
-  word-break: break-word;
 }
 
-/* Chat input */
 .chat-footer {
   display: flex;
   border-top: 1px solid #ccc;
 }
-.chat-footer input {
+#chat-input {
   flex: 1;
   padding: 0.6rem;
   border: none;
   font-size: 1rem;
 }
-.chat-footer button {
+#chat-send {
   background: var(--blue-dsv);
   color: var(--white);
   border: none;
@@ -210,32 +242,123 @@ body {
   cursor: pointer;
   transition: background 0.2s;
 }
-.chat-footer button:hover {
+#chat-send:hover {
   background: var(--blue-dsv-light);
 }
 
-/* Mobile tweaks */
+/* Additional cities stop group */
+.stop-group {
+  position: relative;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Smaller select for additional city */
+.stop-group select {
+  flex: 1;
+  min-width: 140px; /* smaller width */
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--blue-dsv);
+  border-radius: 6px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Clear button for additional cities - same style as truck type */
+.stop-group .btn-remove {
+  background: none;
+  border: none;
+  color: var(--blue-dsv);
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+.stop-group .btn-remove:hover {
+  color: var(--white);
+  background-color: var(--blue-dsv);
+}
+
+/* Truck Types Rows */
+.truck-type-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+/* Select wrapper for truck type - bigger flex */
+.select-wrapper {
+  flex: 3; /* Bigger width */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Quantity wrapper - smaller flex */
+.qty-wrapper {
+  flex: 1; /* Smaller width */
+  display: flex;
+  flex-direction: column;
+}
+
+.select-wrapper label,
+.qty-wrapper label {
+  font-weight: bold;
+  color: var(--text-dsv);
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+  user-select: none;
+}
+
+/* Truck type select input */
+.truck-type-row .select-wrapper select {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--blue-dsv);
+  border-radius: 6px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Quantity number input */
+.truck-type-row .qty-wrapper input[type="number"] {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--blue-dsv);
+  border-radius: 6px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+/* Clear button for truck type */
+.truck-type-row .btn-remove {
+  background: none;
+  border: none;
+  color: var(--blue-dsv);
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+.truck-type-row .btn-remove:hover {
+  color: var(--white);
+  background-color: var(--blue-dsv);
+}
+
 @media (max-width: 480px) {
-  .dsv-logo {
-    width: 120px;
-    top: 1.7rem;
-  }
-  .quote-card {
-    padding: 3rem 1rem 0.75rem;
-    max-width: 320px;
-  }
-  .btn-generate {
-    font-size: 1rem;
-    padding: 0.8rem;
-  }
-  .chat-box {
-    width: 90%;
-    bottom: 5rem;
-    right: 5%;
-  }
+  .dsv-logo { width: 120px; }
+  .quote-card { padding: 1rem; max-width: 320px; }
+  .btn-generate { font-size: 1rem; padding: 0.8rem; }
   .chat-toggle {
-    bottom: env(safe-area-inset-bottom, 1.8rem);
+    bottom: env(safe-area-inset-bottom,1.8rem);
     right: 1rem;
-    z-index: 2000;
   }
 }
