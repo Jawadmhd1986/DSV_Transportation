@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, send_file
 from docxtpl import DocxTemplate
 import os
 import io
+import re
 from datetime import date
 
 app = Flask(__name__)
@@ -293,11 +294,6 @@ def generate_transport():
     dl_name = f"TransportQuotation_{from_city.replace(' ', '_')}_{truck_type.replace(' ', '_')}.docx"
     return send_file(buf, as_attachment=True, download_name=dl_name)
 
-# ----------------------------
-# Local run (Render uses gunicorn)
-# ----------------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
 
 @app.route("/chat", methods=["POST"])
