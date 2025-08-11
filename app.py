@@ -918,10 +918,10 @@ if match([r"\bch\d+\b", r"chamber\s*\d+", r"who.*in.*ch\d+", r"who.*in.*chamber\
             6: "ZARA & TR",
             7: "Civil Defense and the RMS",
         }
-        if chamber in clients:
-            return jsonify({"reply": f"Chamber {chamber} is occupied by {clients[chamber]}."})
-        else:
-            return jsonify({"reply": f"I don't have data for Chamber {chamber}."})
+    if chamber in clients:
+        return jsonify({"reply": f"Chamber {chamber} is occupied by {clients[chamber]}."})
+    else:
+        return jsonify({"reply": f"I don't have data for Chamber {chamber}."})
 
     # --- Warehouse Occupancy (short) ---
     if match([r"warehouse occupancy|occupancy|space available|any space in warehouse|availability.*storage"]):
