@@ -904,21 +904,23 @@ def chat():
     if match([r"ch3|chamber 3"]):
         return jsonify({"reply": "Chamber 3 is used by food clients and fast-moving items."})
 
-    if match([r"who.*in.*chamber|who.*in.*ch\d+"]):
-        ch_num = re.search(r"ch(\d+)", message)
-        if ch_num:
-            chamber = int(ch_num.group(1))
-            clients = {
-                1: "Khalifa University",
-                2: "PSN",
-                3: "Food clients & fast-moving items",
-                4: "MCC, TR, and ADNOC",
-                5: "PSN",
-                6: "ZARA & TR",
-                7: "Civil Defense and the RMS",
-            }
-            client_name = clients.get(chamber, "unknown")
-            return jsonify({"reply": f"Chamber {chamber} is occupied by {client_name}."})
+    # --- Chamber Mapping (Unified) ---
+    if match([r"\bch\d+\b", r"chamber\s*\d+", r"who.*in.*ch\d+", r"who.*in.*chamber\s*\d+"]):
+    ch_num = re.search(r"ch(?:amber)?\s*(\d+)", message)if ch_num:
+        chamber = int(ch_num.group(1))
+        clients = {
+            1: "Khalifa University",
+            2: "PSN (Federal Authority of Protocol and Strategic Narrative)",
+            3: "Food clients & fast-moving items",
+            4: "MCC, TR, and ADNOC",
+            5: "PSN",
+            6: "ZARA & TR",
+            7: "Civil Defense and the RMS",
+        }
+        if chamber in clients:
+            return jsonify({"reply": f"Chamber {chamber} is occupied by {clients[chamber]}."})
+        else:
+            return jsonify({"reply": f"I don't have data for Chamber {chamber}."})
 
     # --- Warehouse Occupancy (short) ---
     if match([r"warehouse occupancy|occupancy|space available|any space in warehouse|availability.*storage"]):
@@ -1030,6 +1032,29 @@ def chat():
             "📍 **Airport Freezone** – Pharma & healthcare storage\n\n"
             "We handle 2PL, 3PL, 4PL logistics, WMS, VAS, and temperature-controlled storage. Contact +971 2 555 2900 or visit dsv.com."
         })
+# --- General Logistics Overview ---
+    if match([
+    r"\blogistics\b",
+    r"what.*is.*logistics",
+    r"about logistics",
+    r"logistics info",
+    r"tell me about logistics",
+    r"explain logistics",
+    r"what do you know about logistics",
+    r"logistics overview",
+    r"define logistics",
+    r"logistics meaning"
+]):
+        return jsonify({"reply":
+        "**Logistics** refers to the planning, execution, and management of the movement and storage of goods, services, and information from origin to destination.\n\n"
+        "At **DSV Abu Dhabi**, logistics includes:\n"
+        "- 📦 **Warehousing** – AC, Non-AC, Open Yard, and temperature-controlled facilities\n"
+        "- 🚛 **Transportation** – Local & GCC trucking (flatbeds, reefers, lowbeds, box trucks, double trailers, etc.)\n"
+        "- 🧾 **Value Added Services** – Packing, labeling, inventory counts, kitting & assembly\n"
+        "- 🌍 **Global Freight Forwarding** – Air, sea, and multimodal shipments\n"
+        "- 🧠 **4PL & Supply Chain Solutions** – End-to-end management, optimization, and consulting\n\n"
+        "We manage everything from port-to-door, ensuring safety, compliance, and cost efficiency."
+    })
 
     # --- DSV Vision / Mission ---
     if match([
