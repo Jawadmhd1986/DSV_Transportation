@@ -1,164 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>DSV Transportation Quotation</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DSV – Transport Quotation</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="/static/dsv_logo.png" />
 </head>
 <body>
-  <img src="{{ url_for('static', filename='dsv_logo.png') }}" alt="DSV Logo" class="dsv-logo" />
 
-  <section class="quote-section">
-    <div class="quote-card">
-      <h1>Transportation Quotation</h1>
+  <header class="site-header">
+    <img src="/static/dsv_logo.png" alt="DSV" class="brand" />
+    <h1>Transport Quotation</h1>
+  </header>
 
-      <form action="{{ url_for('generate_transport') }}" method="POST">
-        <!-- From / To -->
-        <div class="form-row">
-          <div class="form-group">
-            <label for="origin">From</label>
-            <select id="origin" name="origin" required>
-              <option value="">— Select City —</option>
-              <option>Mussafah</option>
-              <option>Alain Industrial Area</option>
-              <option>Al Ain City Limits</option>
-              <option>AUH Airport</option>
-              <option>Abu Dhabi City Limits</option>
-              <option>Mafraq</option>
-              <option>ICAD 2/ICAD3</option>
-              <option>ICAD 4</option>
-              <option>Al Wathba</option>
-              <option>Mina Zayed/Free Port</option>
-              <option>Tawazun Industrial Park</option>
-              <option>KIZAD</option>
-              <option>Khalifa Port/Taweelah</option>
-              <option>Sweihan</option>
-              <option>Yas Island</option>
-              <option>Ghantoot</option>
-              <option>Jebel Ali</option>
-              <option>Dubai-Al Qusais</option>
-              <option>Dubai-Al Quoz</option>
-              <option>Dubai-DIP/DIC</option>
-              <option>Dubai-DMC</option>
-              <option>Dubai-City Limits</option>
-              <option>Sharjah</option>
-              <option>Sharjah-Hamriyah</option>
-              <option>Ajman</option>
-              <option>Umm Al Quwain</option>
-              <option>Fujairah</option>
-              <option>Ras Al Khaimah-Al Ghail</option>
-              <option>Ras Al Khaimah-Hamra</option>
-              <option>Al Markaz Area</option>
-              <option>Baniyas</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="destination">To</label>
-            <select id="destination" name="destination" required>
-              <option value="">— Select City —</option>
-              <option>Mussafah</option>
-              <option>Alain Industrial Area</option>
-              <option>Al Ain City Limits</option>
-              <option>AUH Airport</option>
-              <option>Abu Dhabi City Limits</option>
-              <option>Mafraq</option>
-              <option>ICAD 2/ICAD3</option>
-              <option>ICAD 4</option>
-              <option>Al Wathba</option>
-              <option>Mina Zayed/Free Port</option>
-              <option>Tawazun Industrial Park</option>
-              <option>KIZAD</option>
-              <option>Khalifa Port/Taweelah</option>
-              <option>Sweihan</option>
-              <option>Yas Island</option>
-              <option>Ghantoot</option>
-              <option>Jebel Ali</option>
-              <option>Dubai-Al Qusais</option>
-              <option>Dubai-Al Quoz</option>
-              <option>Dubai-DIP/DIC</option>
-              <option>Dubai-DMC</option>
-              <option>Dubai-City Limits</option>
-              <option>Sharjah</option>
-              <option>Sharjah-Hamriyah</option>
-              <option>Ajman</option>
-              <option>Umm Al Quwain</option>
-              <option>Fujairah</option>
-              <option>Ras Al Khaimah-Al Ghail</option>
-              <option>Ras Al Khaimah-Hamra</option>
-              <option>Al Markaz Area</option>
-              <option>Baniyas</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Trip Type -->
-        <div class="form-group">
-          <label>Trip Type</label>
-          <div class="trip-options">
-            <label><input type="radio" name="trip_type" value="one_way" required /><span>One Way</span></label>
-            <label><input type="radio" name="trip_type" value="back_load" /><span>Backload</span></label>
-            <label><input type="radio" name="trip_type" value="multi" /><span>Multiple</span></label>
-          </div>
-        </div>
-
-        <!-- Additional Cities (shown only when Multiple is selected) -->
-        <div id="stops-container" class="form-group" style="display:none;">
-          <label>Additional Cities</label>
-          <div id="stops-list"></div>
-          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
-        </div>
-
-        <!-- Truck Types dynamic rows -->
-        <div class="form-group">
-          <label>Truck Types</label>
-          <div id="truckTypeContainer"></div>
-          <button type="button" id="add-truck-type" class="btn-add">+ Add Truck Type</button>
-        </div>
-
-        <!-- Cargo Type -->
-        <div class="form-group">
-          <label for="cargo_type">Cargo Type</label>
-          <select id="cargo_type" name="cargo_type" required>
-            <option value="general">General Cargo</option>
-            <option value="chemical">Chemical Load</option>
-            <option value="container">Container</option>
+  <main class="page">
+    <form class="quote-form" action="/generate_transport" method="POST">
+      <div class="grid">
+        <label>
+          <span>From (Origin)</span>
+          <select name="from_city" required>
+            <option value="">— Select City —</option>
+            <option>Mussafah</option>
+            <option>Alain Industrial Area</option>
+            <option>Al Ain City Limits</option>
+            <option>AUH Airport</option>
+            <option>Abu Dhabi City Limits</option>
+            <option>Mafraq</option>
+            <option>ICAD 2/ICAD3</option>
+            <option>ICAD 4</option>
+            <option>Al Wathba</option>
+            <option>Mina Zayed/Free Port</option>
+            <option>Tawazun Industrial Park</option>
+            <option>KIZAD</option>
+            <option>Khalifa Port/Taweelah</option>
+            <option>Sweihan</option>
+            <option>Yas Island</option>
+            <option>Ghantoot</option>
+            <option>Jebel Ali</option>
+            <option>Dubai-Al Qusais</option>
+            <option>Dubai-Al Quoz</option>
+            <option>Dubai-DIP/DIC</option>
+            <option>Dubai-DMC</option>
+            <option>Dubai-City Limits</option>
+            <option>Sharjah</option>
+            <option>Sharjah-Hamriyah</option>
+            <option>Ajman</option>
+            <option>Umm Al Quwain</option>
+            <option>Fujairah</option>
+            <option>Ras Al Khaimah-Al Ghail</option>
+            <option>Ras Al Khaimah-Hamra</option>
+            <option>Al Markaz Area</option>
+            <option>Baniyas</option>
           </select>
-        </div>
+        </label>
 
-        <!-- CICPA -->
-        <div class="form-group">
-          <label for="cicpa">CICPA Pass Required?</label>
-          <select id="cicpa" name="cicpa" required>
-            <option value="No">No</option>
-            <option value="Yes">Yes</option>
+        <label>
+          <span>Destination (optional)</span>
+          <input type="text" name="destination" placeholder="e.g., Client Site / Area" />
+        </label>
+
+        <label>
+          <span>Truck Type</span>
+          <select name="truck_type" required>
+            <option value="">— Select —</option>
+            <option>3 Ton Pickup</option>
+            <option>7 Ton Pickup</option>
+            <option>Flatbed</option>
+            <option>Hazmat FB</option>
+            <option>Curtain side Trailer</option>
           </select>
-        </div>
+        </label>
 
-        <button type="submit" class="btn-generate">Generate</button>
-      </form>
-    </div>
-  </section>
+        <fieldset class="trip-types">
+          <legend>Trip Type</legend>
+          <label><input type="radio" name="trip_type" value="one-way" checked /> One Way</label>
+          <label><input type="radio" name="trip_type" value="round" /> Round Trip</label>
+          <label><input type="radio" name="trip_type" value="multi" /> Multi Stop</label>
+        </fieldset>
 
-  <!-- Chat toggle -->
-  <button class="chat-toggle">
-    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
-  </button>
+        <label class="checkline">
+          <input type="checkbox" name="cicpa" value="Yes" />
+          <span>Include CICPA fee (if applicable)</span>
+        </label>
+      </div>
 
-  <!-- Chat box -->
-  <div id="chat-box" class="chat-box">
-    <div class="chat-header">
-      <span>DSV Chat</span>
-      <button id="chat-close">×</button>
-    </div>
-    <div id="chat-messages" class="chat-messages"></div>
-    <div class="chat-footer">
-      <input type="text" id="chat-input" placeholder="Type a message…" />
-      <button id="chat-send" type="button">Send</button>
-    </div>
+      <button class="btn-primary" type="submit">Generate Quotation (DOCX)</button>
+    </form>
+  </main>
+
+  <!-- ============ DSV Chat Widget ============ -->
+  <div class="chat-toggle" aria-label="Open chat" title="Chat">
+    <img src="/static/chat-icon.png" alt="Open chat" />
   </div>
 
-<script src="{{ url_for('static', filename='chatbot.js') }}"></script>
+  <div id="chat-box" class="chatbox" aria-live="polite">
+    <div class="chat-head">
+      <strong>DSV Chat</strong>
+      <button id="chat-close" class="close-btn" aria-label="Close">×</button>
+    </div>
+
+    <div id="chat-messages" class="messages" tabindex="0" aria-label="Chat messages"></div>
+
+    <div class="chat-input">
+      <textarea id="chat-input" rows="1" placeholder="Type a message…" aria-label="Type a message"></textarea>
+      <button id="chat-send" class="send-btn" aria-label="Send">Send</button>
+    </div>
+  </div>
+  <!-- ============ /DSV Chat Widget ============ -->
+
+  <script src="/static/chatbot.js"></script>
 </body>
 </html>
