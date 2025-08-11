@@ -31,48 +31,31 @@ def generate():
 
     # Rates / units
     if storage_type == "AC":
-        rate = 2.5
-        unit = "CBM"
-        rate_unit = "CBM / DAY"
+        rate, unit, rate_unit = 2.5, "CBM", "CBM / DAY"
         storage_fee = volume * days * rate
     elif storage_type == "Non-AC":
-        rate = 2.0
-        unit = "CBM"
-        rate_unit = "CBM / DAY"
+        rate, unit, rate_unit = 2.0, "CBM", "CBM / DAY"
         storage_fee = volume * days * rate
     elif storage_type == "Open Shed":
-        rate = 1.8
-        unit = "CBM"
-        rate_unit = "CBM / DAY"
+        rate, unit, rate_unit = 1.8, "CBM", "CBM / DAY"
         storage_fee = volume * days * rate
     elif storage_type == "Chemicals AC":
-        rate = 3.5
-        unit = "CBM"
-        rate_unit = "CBM / DAY"
+        rate, unit, rate_unit = 3.5, "CBM", "CBM / DAY"
         storage_fee = volume * days * rate
     elif storage_type == "Chemicals Non-AC":
-        rate = 2.7
-        unit = "CBM"
-        rate_unit = "CBM / DAY"
+        rate, unit, rate_unit = 2.7, "CBM", "CBM / DAY"
         storage_fee = volume * days * rate
     elif "kizad" in storage_type.lower():
-        rate = 125
-        unit = "SQM"
-        rate_unit = "SQM / YEAR"
+        rate, unit, rate_unit = 125, "SQM", "SQM / YEAR"
         storage_fee = volume * days * (rate / 365)
     elif "mussafah" in storage_type.lower():
-        rate = 160
-        unit = "SQM"
-        rate_unit = "SQM / YEAR"
+        rate, unit, rate_unit = 160, "SQM", "SQM / YEAR"
         storage_fee = volume * days * (rate / 365)
     else:
-        rate = 0
-        storage_fee = 0
-        unit = "CBM"
-        rate_unit = "CBM / DAY"
+        rate, unit, rate_unit, storage_fee = 0, "CBM", "CBM / DAY", 0
 
     storage_fee = round(storage_fee, 2)
-    months = max(1, days // 30)
+    months = max(1, days // 30)  # keep your existing logic
     is_open_yard = "open yard" in storage_type.lower()
     wms_fee = 0 if is_open_yard or not include_wms else 1500 * months
     total_fee = round(storage_fee + wms_fee, 2)
@@ -88,25 +71,28 @@ def generate():
         "{{WMS_FEE}}": f"{wms_fee:,.2f} AED",
         "{{TOTAL_FEE}}": f"{total_fee:,.2f} AED",
         "{{TODAY_DATE}}": today_str,
+        "{{COMMODITY}}": commodity or "N/A",  # ← added
     }
 
+    # Replace while preserving formatting (runs)
+    def replace_in_paragraph(paragraph, mapping):
+        for key, val in mapping.items():
+            if key in paragraph.text:
+                for run in paragraph.runs:
+                    run.text = run.text.replace(key, val)
+
     def replace_placeholders(doc_obj, mapping):
-        # Paragraphs
         for p in doc_obj.paragraphs:
-            for key, val in mapping.items():
-                if key in p.text:
-                    p.text = p.text.replace(key, val)
-        # Tables (cells)
+            replace_in_paragraph(p, mapping)
         for table in doc_obj.tables:
             for row in table.rows:
                 for cell in row.cells:
-                    for key, val in mapping.items():
-                        if key in cell.text:
-                            cell.text = cell.text.replace(key, val)
+                    for p in cell.paragraphs:
+                        replace_in_paragraph(p, mapping)
 
     replace_placeholders(doc, placeholders)
 
-    # Delete blocks bracketed by [TAG] ... [/TAG] — now works in tables too
+    # Delete blocks bracketed by [TAG] ... [/TAG]
     def _delete_block_in_paragraphs(doc_obj, start_tag, end_tag):
         inside = False
         to_delete = []
@@ -150,7 +136,7 @@ def generate():
         _delete_block_in_paragraphs(doc_obj, start_tag, end_tag)
         _delete_block_in_tables(doc_obj, start_tag, end_tag)
 
-    # Remove non-relevant VAS sections
+    # Keep only the relevant VAS section
     if "open yard" in storage_type.lower():
         delete_block(doc, "[VAS_STANDARD]", "[/VAS_STANDARD]")
         delete_block(doc, "[VAS_CHEMICAL]", "[/VAS_CHEMICAL]")
