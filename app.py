@@ -905,23 +905,23 @@ def chat():
         return jsonify({"reply": "Chamber 3 is used by food clients and fast-moving items."})
 
     # --- Chamber Mapping (Unified) ---
-if match([r"\bch\d+\b", r"chamber\s*\d+", r"who.*in.*ch\d+", r"who.*in.*chamber\s*\d+"]):
-    ch_num = re.search(r"ch(?:amber)?\s*(\d+)", message)
-    if ch_num:
-        chamber = int(ch_num.group(1))
+# Place inside the chat() function and fix scope
+    if match([r"\bch\d+\b", r"chamber\s*\d+", r"who.*in.*ch\d+", r"who.*in.*chamber\s*\d+"]):
+        ch_num = re.search(r"ch(?:amber)?\s*(\d+)", message)
         clients = {
-            1: "Khalifa University",
-            2: "PSN (Federal Authority of Protocol and Strategic Narrative)",
-            3: "Food clients & fast-moving items",
-            4: "MCC, TR, and ADNOC",
-            5: "PSN",
-            6: "ZARA & TR",
-            7: "Civil Defense and the RMS",
-        }
-    if chamber in clients:
-        return jsonify({"reply": f"Chamber {chamber} is occupied by {clients[chamber]}."})
-    else:
-        return jsonify({"reply": f"I don't have data for Chamber {chamber}."})
+        1: "Khalifa University",
+        2: "PSN (Federal Authority of Protocol and Strategic Narrative)",
+        3: "Food clients & fast-moving items",
+        4: "MCC, TR, and ADNOC",
+        5: "PSN",
+        6: "ZARA & TR",
+        7: "Civil Defense and the RMS",}
+        if ch_num:
+            chamber = int(ch_num.group(1))
+            if chamber in clients:
+                return jsonify({"reply": f"Chamber {chamber} is occupied by {clients[chamber]}."})
+            else:
+                return jsonify({"reply": f"I don't have data for Chamber {chamber}."})
 
     # --- Warehouse Occupancy (short) ---
     if match([r"warehouse occupancy|occupancy|space available|any space in warehouse|availability.*storage"]):
