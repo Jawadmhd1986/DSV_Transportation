@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 import io, os, re, csv
@@ -189,6 +191,17 @@ def add_row(table, item, unit_rate="", amount=""):
     if len(cells) >= 1: cells[0].text = str(item)
     if len(cells) >= 2: cells[1].text = str(unit_rate)
     if len(cells) >= 3: cells[2].text = str(amount)
+    return row
+
+def emphasize_row(row, font_pt=14):
+    """Bold + bigger font for emphasis (Grand Total)."""
+    for i, cell in enumerate(row.cells):
+        for p in cell.paragraphs:
+            # align last column (amount) to the right for clarity
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if i == (len(row.cells)-1) else WD_ALIGN_PARAGRAPH.LEFT
+            for run in p.runs:
+                run.font.bold = True
+                run.font.size = Pt(font_pt)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # UI
@@ -212,7 +225,7 @@ def rates_debug():
     })
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Generate Transportation Quotation (ONLY rate lines + totals in the table)
+# Generate Transportation Quotation (NO VAT in table or totals)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
@@ -267,28 +280,24 @@ def generate_transport():
         for (frm, to) in legs:
             rate = lookup_rate(frm, to, t, cargo_type)
             if rate is None:
-                # skip legs with no rate (we only show priced lines)
-                continue
+                continue  # show only priced legs
             leg_rate = (rate * backload_mult)
             combined += (leg_rate * qty)
             leg_descs.append(f"{frm} → {to}: AED {money(leg_rate)} x {qty}")
 
-        # Only add row if we actually priced something
         if combined > 0 and leg_descs:
             unit_rate_str = f"AED {money((combined/qty) if qty else combined)}"
             amount_str    = f"AED {money(combined)}"
             per_truck_rows.append((f"{label} x {qty} — " + " | ".join(leg_descs), unit_rate_str, amount_str))
             subtotal += combined
 
-    # Fees
+    # Fees (NO VAT)
     total_trips = len(legs) * sum(q for _, q in chosen_trucks) if chosen_trucks else 0
     env_fixed   = DEC("10.00") * DEC(str(total_trips))    # AED 10 / trip / truck
     env_percent = subtotal * DEC("0.0015")                # 0.15% of invoice value
-    pre_vat     = subtotal + env_fixed + env_percent
-    vat         = pre_vat * DEC("0.05")
-    grand_total = pre_vat + vat
+    grand_total = subtotal + env_fixed + env_percent      # ← VAT removed entirely
 
-    # Summary placeholders (bullets above the table)
+    # Summary placeholders used above the table
     truck_summary = "; ".join(f"{truck_labels.get(t, t.title())} x {qty}" for t, qty in chosen_trucks) or "N/A"
     route_str = " \u2192 ".join([p for p in [origin] + stops + [destination] if p]) or "N/A"
     general_flag  = "General Cargo" if cargo_type in ("general", "container") else ""
@@ -316,22 +325,23 @@ def generate_transport():
     replace_everywhere(doc, placeholders)
 
     # Rebuild the "Quotation Details" table:
-    # 👉 ONLY priced truck lines + totals (no empty info rows)
+    # 👉 ONLY priced truck lines + totals (NO VAT row)
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
 
-        # Add each priced truck line
-        if per_truck_rows:
-            for desc, unit_rate, amount in per_truck_rows:
-                add_row(table, desc, unit_rate, amount)
+        # Add priced truck lines
+        for desc, unit_rate, amount in per_truck_rows:
+            add_row(table, desc, unit_rate, amount)
 
-        # Totals
+        # Totals (no VAT)
         add_row(table, "Subtotal (trips)", "", f"AED {money(subtotal)}")
         add_row(table, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
         add_row(table, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
-        add_row(table, "VAT 5%", "", f"AED {money(vat)}")
-        add_row(table, "Grand Total", "", f"AED {money(grand_total)}")
+
+        # GRAND TOTAL emphasized
+        gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
+        emphasize_row(gt_row, font_pt=14)
     else:
         # Fallback if template table changes
         doc.add_paragraph("Quotation Details (Auto)")
@@ -343,8 +353,8 @@ def generate_transport():
         add_row(small, "Subtotal (trips)", "", f"AED {money(subtotal)}")
         add_row(small, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
         add_row(small, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
-        add_row(small, "VAT 5%", "", f"AED {money(vat)}")
-        add_row(small, "Grand Total", "", f"AED {money(grand_total)}")
+        gt_row = add_row(small, "GRAND TOTAL", "", f"AED {money(grand_total)}")
+        emphasize_row(gt_row, font_pt=14)
 
     # Stream file
     buf = io.BytesIO()
