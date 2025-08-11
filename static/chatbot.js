@@ -1,4 +1,4 @@
-// ==== Fix for mobile viewport height (optional, safe to keep) ====
+// ---- Viewport fix (same as project 1) ----
 window.addEventListener('load', () => {
   const vh = window.innerHeight * 0.01;
   document.documentElement.style.setProperty('--vh', `${vh}px`);
@@ -9,88 +9,32 @@ window.addEventListener('resize', () => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  const chatWin   = document.getElementById('chatWin');
-  const openBtn   = document.querySelector('.chat-toggle');
-  const closeBtn  = document.getElementById('chat-close');
-  const chatBox   = document.getElementById('chat-box');
-  const inputEl   = document.getElementById('chat-input');
-  const sendBtn   = document.getElementById('chat-send');
+  // ---------------- Chatbot (same UX & API as project 1) ----------------
+  const chatBox    = document.getElementById('chat-box');
+  const chatToggle = document.querySelector('.chat-toggle');
+  const chatClose  = document.getElementById('chat-close');
+  const sendBtn    = document.getElementById('chat-send');
+  const inputEl    = document.getElementById('chat-input');
+  const msgsEl     = document.getElementById('chat-messages');
 
-  const scrollToBottom = () => { chatBox.scrollTop = chatBox.scrollHeight; };
-
-  // Format bot messages, repair inline bullets
-  function renderRich(text) {
-    let t = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    t = t.replace(/:\s*-\s/g, ':\n- ');
-    t = t.replace(/(\S)\s-\s(?=[\p{Emoji}\w])/gu, '$1\n- ');
-    if (/^- |\n- /m.test(t)) {
-      const lines = t.split(/\n/);
-      let out = [], inList = false;
-      for (const ln of lines) {
-        if (ln.trim().startsWith('- ')) {
-          if (!inList) { out.push('<ul>'); inList = true; }
-          out.push('<li>' + ln.trim().slice(2) + '</li>');
-        } else {
-          if (inList) { out.push('</ul>'); inList = false; }
-          out.push(ln);
-        }
+  if (chatToggle && chatBox && chatClose && sendBtn && inputEl && msgsEl) {
+    chatToggle.addEventListener('click', () => chatBox.classList.toggle('open'));
+    chatClose.addEventListener('click', () => chatBox.classList.remove('open'));
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
       }
-      if (inList) out.push('</ul>');
-      t = out.join('\n');
-    }
-    t = t.replace(/\n/g, '<br>');
-    return t;
+    });
   }
 
-  function addMsg(text, from='bot', asCard=false) {
-    const wrap = document.createElement('div');
-    wrap.className = `msg ${from}`;
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    bubble.innerHTML = asCard ? `<div class="card">${renderRich(text)}</div>` : renderRich(text);
-    wrap.appendChild(bubble);
-    chatBox.appendChild(wrap);
-    scrollToBottom();
-  }
-
-  let typingEl = null;
-  function showTyping() {
-    typingEl = document.createElement('div');
-    typingEl.className = 'msg bot';
-    typingEl.innerHTML = `<div class="bubble"><span class="typing">
-      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-    </span></div>`;
-    chatBox.appendChild(typingEl);
-    scrollToBottom();
-  }
-  function hideTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
-
-  // Greet once when opened
-  let greeted = false;
-  function greetOnce() {
-    if (greeted) return;
-    greeted = true;
-    addMsg(
-      "Hi! I’m your DSV assistant. Ask me about **storage rates**, **VAS**, **truck types**, **distances**, **racking**, or anything logistics.",
-      'bot', true
-    );
-  }
-
-  // Open/close chat
-  openBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    chatWin.classList.toggle('open');
-    if (chatWin.classList.contains('open')) { greetOnce(); setTimeout(() => inputEl.focus(), 80); }
-  });
-  closeBtn.addEventListener('click', () => chatWin.classList.remove('open'));
-
-  // Send message
-  async function send() {
-    const text = (inputEl.value || '').trim();
+  async function sendMessage() {
+    const text = inputEl.value.trim();
     if (!text) return;
-    addMsg(text, 'user');
+    appendMessage('user', text);
     inputEl.value = '';
-    showTyping();
+
     try {
       const res = await fetch('/chat', {
         method: 'POST',
@@ -98,14 +42,148 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ message: text })
       });
       const data = await res.json();
-      hideTyping();
-      const looksCard = /\n- |\*\*/.test(data.reply) || data.reply.split('\n').length >= 3;
-      addMsg(data.reply, 'bot', looksCard);
-    } catch (err) {
-      hideTyping();
-      addMsg("Sorry, I couldn’t reach the server. Please try again.", 'bot');
+      const reply = (data && data.reply) ? data.reply : '...';
+      const hasHTML = /<[^>]+>/.test(reply);
+      appendMessage('bot', reply, !hasHTML);
+    } catch {
+      appendMessage('bot', 'Sorry, something went wrong.');
     }
   }
-  sendBtn.addEventListener('click', send);
-  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+  function appendMessage(sender, text, typewriter = false) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `message ${sender}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    wrapper.appendChild(bubble);
+    msgsEl.appendChild(wrapper);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+
+    if (!typewriter) {
+      bubble.innerHTML = text;
+    } else {
+      let i = 0;
+      (function typeChar(){
+        if (i < text.length) {
+          bubble.innerHTML += text.charAt(i++);
+          msgsEl.scrollTop = msgsEl.scrollHeight;
+          setTimeout(typeChar, 15);
+        }
+      })();
+    }
+  }
+
+  // ---------------- Transport dynamic UI ----------------
+  const tripRadios      = document.querySelectorAll('input[name="trip_type"]');
+  const stopsContainer  = document.getElementById('stops-container');
+  const stopsList       = document.getElementById('stops-list');
+  const addStopBtn      = document.getElementById('add-stop');
+
+  const truckTypeContainer = document.getElementById('truckTypeContainer');
+  const addTruckTypeBtn    = document.getElementById('add-truck-type');
+
+  // Trip type behavior
+  tripRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      const isMulti = radio.value === 'multi' && radio.checked;
+      if (isMulti) {
+        stopsContainer.style.display  = 'block';
+        stopsContainer.style.overflowY = 'auto';
+      } else {
+        stopsContainer.style.display  = 'none';
+        stopsContainer.style.overflowY = 'hidden';
+        if (stopsList) stopsList.innerHTML = '';
+      }
+      // selection highlight
+      document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
+      const label = radio.closest('label');
+      if (label) label.classList.add('selected');
+    });
+  });
+
+  // Add additional stop
+  if (addStopBtn && stopsList) {
+    addStopBtn.addEventListener('click', () => {
+      const wrap = document.createElement('div');
+      wrap.className = 'stop-group';
+      wrap.innerHTML = `
+        <select name="additional_cities[]" required>
+          <option value="">— Select City —</option>
+          <option>Mussafah</option>
+          <option>Alain Industrial Area</option>
+          <option>Al Ain City Limits</option>
+          <option>AUH Airport</option>
+          <option>Abu Dhabi City Limits</option>
+          <option>Mafraq</option>
+          <option>ICAD 2/ICAD3</option>
+          <option>ICAD 4</option>
+          <option>Al Wathba</option>
+          <option>Mina Zayed/Free Port</option>
+          <option>Tawazun Industrial Park</option>
+          <option>KIZAD</option>
+          <option>Khalifa Port/Taweelah</option>
+          <option>Sweihan</option>
+          <option>Yas Island</option>
+          <option>Ghantoot</option>
+          <option>Jebel Ali</option>
+          <option>Dubai-Al Qusais</option>
+          <option>Dubai-Al Quoz</option>
+          <option>Dubai-DIP/DIC</option>
+          <option>Dubai-DMC</option>
+          <option>Dubai-City Limits</option>
+          <option>Sharjah</option>
+          <option>Sharjah-Hamriyah</option>
+          <option>Ajman</option>
+          <option>Umm Al Quwain</option>
+          <option>Fujairah</option>
+          <option>Ras Al Khaimah-Al Ghail</option>
+          <option>Ras Al Khaimah-Hamra</option>
+          <option>Al Markaz Area</option>
+          <option>Baniyas</option>
+        </select>
+        <button type="button" class="btn-remove" title="Remove City">Clear</button>
+      `;
+      stopsList.appendChild(wrap);
+      wrap.querySelector('.btn-remove').addEventListener('click', () => {
+        stopsList.removeChild(wrap);
+      });
+    });
+  }
+
+  // Truck rows
+  function createTruckRow(){
+    const row = document.createElement('div');
+    row.className = 'truck-type-row';
+    row.innerHTML = `
+      <div class="select-wrapper">
+        <label class="inline-label">Type</label>
+        <select name="truck_type[]" required>
+          <option value="">— Select Truck Type —</option>
+          <option value="flatbed">Flatbed (22–25 tons)</option>
+          <option value="box">Box / Curtainside (5–10 tons)</option>
+          <option value="reefer">Refrigerated (3–12 tons)</option>
+          <option value="city">City (1–3 tons)</option>
+          <option value="tipper">Tipper / Dump (15–20 tons)</option>
+          <option value="double_trailer">Double Trailer</option>
+          <option value="10_ton">10-Ton Truck</option>
+          <option value="lowbed">Lowbed</option>
+        </select>
+      </div>
+      <div class="qty-wrapper">
+        <label class="inline-label">QTY</label>
+        <input type="number" name="truck_qty[]" min="1" placeholder="Count" required />
+      </div>
+      <button type="button" class="btn-remove" title="Remove Truck Type">Clear</button>
+    `;
+    row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+    return row;
+  }
+
+  if (truckTypeContainer && addTruckTypeBtn) {
+    addTruckTypeBtn.addEventListener('click', () => {
+      truckTypeContainer.appendChild(createTruckRow());
+    });
+    // initial row
+    truckTypeContainer.appendChild(createTruckRow());
+  }
 });
