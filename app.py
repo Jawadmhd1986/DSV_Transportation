@@ -1,165 +1,279 @@
 from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
 import os
-import re
-from datetime import datetime
+import io
+from datetime import date
+from flask import Flask, render_template, request, send_file
+from docxtpl import DocxTemplate
 
 app = Flask(__name__)
 
-@app.route("/")
-def index():
-    return render_template("form.html")
+# Price rates dictionary by city and truck type
+rates = {
+    "Abu Dhabi City Limits": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 550,
+        "Flatbed": 800,
+        "Hazmat FB": 1350,
+        "Curtain side Trailer": 1100
+    },
+    "Ajman": {
+        "3 Ton Pickup": 700,
+        "7 Ton Pickup": 1200,
+        "Flatbed": 1750,
+        "Hazmat FB": 2900,
+        "Curtain side Trailer": 2300
+    },
+    "Al Ain City Limits": {
+        "3 Ton Pickup": 690,
+        "7 Ton Pickup": 890,
+        "Flatbed": 1400,
+        "Hazmat FB": 2350,
+        "Curtain side Trailer": 1700
+    },
+    "Al Markaz Area": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 500,
+        "Flatbed": 750,
+        "Hazmat FB": 1350,
+        "Curtain side Trailer": 1300
+    },
+    "Al Wathba": {
+        "3 Ton Pickup": 450,
+        "7 Ton Pickup": 600,
+        "Flatbed": 750,
+        "Hazmat FB": 1350,
+        "Curtain side Trailer": 1100
+    },
+    "Alain Industrial Area": {
+        "3 Ton Pickup": 650,
+        "7 Ton Pickup": 850,
+        "Flatbed": 1300,
+        "Hazmat FB": 2200,
+        "Curtain side Trailer": 1600
+    },
+    "AUH Airport": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 600,
+        "Flatbed": 800,
+        "Hazmat FB": 1350,
+        "Curtain side Trailer": 1100
+    },
+    "Baniyas": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 600,
+        "Flatbed": 750,
+        "Hazmat FB": 1350,
+        "Curtain side Trailer": 1300
+    },
+    "Dubai-Al Quoz": {
+        "3 Ton Pickup": 650,
+        "7 Ton Pickup": 950,
+        "Flatbed": 1350,
+        "Hazmat FB": 2300,
+        "Curtain side Trailer": 1850
+    },
+    "Dubai-Al Qusais": {
+        "3 Ton Pickup": 650,
+        "7 Ton Pickup": 950,
+        "Flatbed": 1400,
+        "Hazmat FB": 2400,
+        "Curtain side Trailer": 1950
+    },
+    "Dubai-City Limits": {
+        "3 Ton Pickup": 650,
+        "7 Ton Pickup": 950,
+        "Flatbed": 1400,
+        "Hazmat FB": 2400,
+        "Curtain side Trailer": 1900
+    },
+    "Dubai-DIP/DIC": {
+        "3 Ton Pickup": 600,
+        "7 Ton Pickup": 850,
+        "Flatbed": 1200,
+        "Hazmat FB": 2100,
+        "Curtain side Trailer": 1650
+    },
+    "Dubai-DMC": {
+        "3 Ton Pickup": 650,
+        "7 Ton Pickup": 950,
+        "Flatbed": 1350,
+        "Hazmat FB": 2400,
+        "Curtain side Trailer": 1900
+    },
+    "Fujairah": {
+        "3 Ton Pickup": 950,
+        "7 Ton Pickup": 1500,
+        "Flatbed": 2300,
+        "Hazmat FB": 3400,
+        "Curtain side Trailer": 3100
+    },
+    "Ghantoot": {
+        "3 Ton Pickup": 550,
+        "7 Ton Pickup": 700,
+        "Flatbed": 1000,
+        "Hazmat FB": 1650,
+        "Curtain side Trailer": 1350
+    },
+    "ICAD 2/ICAD3": {
+        "3 Ton Pickup": 350,
+        "7 Ton Pickup": 450,
+        "Flatbed": 500,
+        "Hazmat FB": 950,
+        "Curtain side Trailer": 850
+    },
+    "ICAD 4": {
+        "3 Ton Pickup": 350,
+        "7 Ton Pickup": 485,
+        "Flatbed": 550,
+        "Hazmat FB": 1000,
+        "Curtain side Trailer": 950
+    },
+    "Jebel Ali": {
+        "3 Ton Pickup": 600,
+        "7 Ton Pickup": 850,
+        "Flatbed": 1200,
+        "Hazmat FB": 2100,
+        "Curtain side Trailer": 1650
+    },
+    "Khalifa Port/Taweelah": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 500,
+        "Flatbed": 750,
+        "Hazmat FB": 1300,
+        "Curtain side Trailer": 1200
+    },
+    "KIZAD": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 500,
+        "Flatbed": 750,
+        "Hazmat FB": 1300,
+        "Curtain side Trailer": 1200
+    },
+    "Mafraq": {
+        "3 Ton Pickup": 350,
+        "7 Ton Pickup": 550,
+        "Flatbed": 650,
+        "Hazmat FB": 1100,
+        "Curtain side Trailer": 900
+    },
+    "Mina Zayed/Free Port": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 600,
+        "Flatbed": 750,
+        "Hazmat FB": 1350,
+        "Curtain side Trailer": 1100
+    },
+    "Mussafah": {
+        "3 Ton Pickup": 300,
+        "7 Ton Pickup": 350,
+        "Flatbed": 400,
+        "Hazmat FB": 900,
+        "Curtain side Trailer": 750
+    },
+    "Ras Al Khaimah-Al Ghail": {
+        "3 Ton Pickup": 950,
+        "7 Ton Pickup": 1400,
+        "Flatbed": 1950,
+        "Hazmat FB": 3200,
+        "Curtain side Trailer": 2700
+    },
+    "Ras Al Khaimah-Hamra": {
+        "3 Ton Pickup": 1050,
+        "7 Ton Pickup": 1400,
+        "Flatbed": 2100,
+        "Hazmat FB": 3200,
+        "Curtain side Trailer": 2800
+    },
+    "Sharjah": {
+        "3 Ton Pickup": 680,
+        "7 Ton Pickup": 1100,
+        "Flatbed": 1600,
+        "Hazmat FB": 2700,
+        "Curtain side Trailer": 2100
+    },
+    "Sharjah-Hamriyah": {
+        "3 Ton Pickup": 680,
+        "7 Ton Pickup": 1100,
+        "Flatbed": 1600,
+        "Hazmat FB": 2700,
+        "Curtain side Trailer": 2100
+    },
+    "Sweihan": {
+        "3 Ton Pickup": 600,
+        "7 Ton Pickup": 725,
+        "Flatbed": 950,
+        "Hazmat FB": 1600,
+        "Curtain side Trailer": 1300
+    },
+    "Tawazun Industrial Park": {
+        "3 Ton Pickup": 500,
+        "7 Ton Pickup": 650,
+        "Flatbed": 850,
+        "Hazmat FB": 1500,
+        "Curtain side Trailer": 1300
+    },
+    "Umm Al Quwain": {
+        "3 Ton Pickup": 900,
+        "7 Ton Pickup": 1300,
+        "Flatbed": 1900,
+        "Hazmat FB": 3000,
+        "Curtain side Trailer": 2500
+    },
+    "Yas Island": {
+        "3 Ton Pickup": 400,
+        "7 Ton Pickup": 650,
+        "Flatbed": 800,
+        "Hazmat FB": 1400,
+        "Curtain side Trailer": 1200
+    }
+}
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    storage_type = request.form.get("storage_type", "")
-    volume = float(request.form.get("volume", 0))
-    days = int(request.form.get("days", 0))
-    include_wms = request.form.get("wms", "No") == "Yes"
-    commodity = request.form.get("commodity", "").strip()
-    today_str = datetime.today().strftime("%d %b %Y")
+@app.route('/')
+def home():
+    # Render form page
+    return render_template('transport_form.html')
 
-    # Pick template based on storage_type
-    if "chemical" in storage_type.lower():
-        template_path = "templates/Chemical VAS.docx"
-    elif "open yard" in storage_type.lower():
-        template_path = "templates/Open Yard VAS.docx"
-    else:
-        template_path = "templates/Standard VAS.docx"
+@app.route('/generate_transport', methods=['POST'])
+def generate_transport():
+    # Get form data
+    truck_type = request.form.get('truck_type')
+    from_city = request.form.get('from_city')
 
-    doc = Document(template_path)
+    # Get the price based on city and truck type
+    city_rates = rates.get(from_city)
+    if not city_rates:
+        return "City not found", 400
 
-    # Rates / units
-    if storage_type == "AC":
-        rate, unit, rate_unit = 2.5, "CBM", "CBM / DAY"
-        storage_fee = volume * days * rate
-    elif storage_type == "Non-AC":
-        rate, unit, rate_unit = 2.0, "CBM", "CBM / DAY"
-        storage_fee = volume * days * rate
-    elif storage_type == "Open Shed":
-        rate, unit, rate_unit = 1.8, "CBM", "CBM / DAY"
-        storage_fee = volume * days * rate
-    elif storage_type == "Chemicals AC":
-        rate, unit, rate_unit = 3.5, "CBM", "CBM / DAY"
-        storage_fee = volume * days * rate
-    elif storage_type == "Chemicals Non-AC":
-        rate, unit, rate_unit = 2.7, "CBM", "CBM / DAY"
-        storage_fee = volume * days * rate
-    elif "kizad" in storage_type.lower():
-        rate, unit, rate_unit = 125, "SQM", "SQM / YEAR"
-        storage_fee = volume * days * (rate / 365)
-    elif "mussafah" in storage_type.lower():
-        rate, unit, rate_unit = 160, "SQM", "SQM / YEAR"
-        storage_fee = volume * days * (rate / 365)
-    else:
-        rate, unit, rate_unit, storage_fee = 0, "CBM", "CBM / DAY", 0
+    price = city_rates.get(truck_type)
+    if price is None:
+        return "Truck type not found for the selected city", 400
 
-    storage_fee = round(storage_fee, 2)
-    months = max(1, days // 30)
-    is_open_yard = "open yard" in storage_type.lower()
-    wms_fee = 0 if is_open_yard or not include_wms else 1500 * months
-    total_fee = round(storage_fee + wms_fee, 2)
+    # Load the Word template
+    tpl = DocxTemplate("templates/TransportQuotation.docx")
 
-    placeholders = {
-        "{{STORAGE_TYPE}}": storage_type,
-        "{{DAYS}}": str(days),
-        "{{VOLUME}}": str(volume),
-        "{{UNIT}}": unit,
-        "{{WMS_STATUS}}": "" if is_open_yard else ("INCLUDED" if include_wms else "NOT INCLUDED"),
-        "{{UNIT_RATE}}": f"{rate:.2f} AED / {rate_unit}",
-        "{{STORAGE_FEE}}": f"{storage_fee:,.2f} AED",
-        "{{WMS_FEE}}": f"{wms_fee:,.2f} AED",
-        "{{TOTAL_FEE}}": f"{total_fee:,.2f} AED",
-        "{{TODAY_DATE}}": today_str,
-        "{{COMMODITY}}": commodity or "N/A",
+    # Prepare context for template rendering
+    context = {
+        'TRUCK_TYPE': truck_type,
+        'FROM': from_city,
+        'UNIT_RATE': price,
+        'TOTAL_FEE': price  # If needed, can calculate more fees here
     }
 
-    # Replace placeholders even if Word split them across runs
-    def replace_in_paragraph(paragraph, mapping):
-        if not paragraph.runs:
-            return
-        full_text = "".join(run.text for run in paragraph.runs)
-        new_text = full_text
-        for key, val in mapping.items():
-            new_text = new_text.replace(key, val)
-        if new_text != full_text:
-            for run in paragraph.runs:
-                run.text = ""
-            paragraph.runs[0].text = new_text
+    # Render the template with context
+    tpl.render(context)
 
-    def replace_placeholders(doc_obj, mapping):
-        for p in doc_obj.paragraphs:
-            replace_in_paragraph(p, mapping)
-        for table in doc_obj.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for p in cell.paragraphs:
-                        replace_in_paragraph(p, mapping)
+    # Save to in-memory bytes buffer
+    file_stream = io.BytesIO()
+    tpl.save(file_stream)
+    file_stream.seek(0)
 
-    replace_placeholders(doc, placeholders)
+    # Send the generated docx file to the user
+    return send_file(file_stream, as_attachment=True, download_name='TransportQuotation.docx')
 
-    # Delete blocks bracketed by [TAG] ... [/TAG]
-    def _delete_block_in_paragraphs(doc_obj, start_tag, end_tag):
-        inside = False
-        to_delete = []
-        for i, p in enumerate(doc_obj.paragraphs):
-            if start_tag in p.text:
-                inside = True
-                to_delete.append(i)
-            elif end_tag in p.text:
-                to_delete.append(i)
-                inside = False
-            elif inside:
-                to_delete.append(i)
-        for i in reversed(to_delete):
-            elem = doc_obj.paragraphs[i]._element
-            parent = elem.getparent()
-            if parent is not None:
-                parent.remove(elem)
-
-    def _delete_block_in_tables(doc_obj, start_tag, end_tag):
-        for table in doc_obj.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    inside = False
-                    to_remove = []
-                    for p in cell.paragraphs:
-                        if start_tag in p.text:
-                            inside = True
-                            to_remove.append(p)
-                        elif end_tag in p.text:
-                            to_remove.append(p)
-                            inside = False
-                        elif inside:
-                            to_remove.append(p)
-                    for p in to_remove:
-                        elem = p._element
-                        parent = elem.getparent()
-                        if parent is not None:
-                            parent.remove(elem)
-
-    def delete_block(doc_obj, start_tag, end_tag):
-        _delete_block_in_paragraphs(doc_obj, start_tag, end_tag)
-        _delete_block_in_tables(doc_obj, start_tag, end_tag)
-
-    # Keep only the relevant VAS section
-    if "open yard" in storage_type.lower():
-        delete_block(doc, "[VAS_STANDARD]", "[/VAS_STANDARD]")
-        delete_block(doc, "[VAS_CHEMICAL]", "[/VAS_CHEMICAL]")
-    elif "chemical" in storage_type.lower():
-        delete_block(doc, "[VAS_STANDARD]", "[/VAS_STANDARD]")
-        delete_block(doc, "[VAS_OPENYARD]", "[/VAS_OPENYARD]")
-    else:
-        delete_block(doc, "[VAS_CHEMICAL]", "[/VAS_CHEMICAL]")
-        delete_block(doc, "[VAS_OPENYARD]", "[/VAS_OPENYARD]")
-
-    os.makedirs("generated", exist_ok=True)
-    filename_prefix = commodity if commodity else "quotation"
-    filename = f"Quotation_{filename_prefix}.docx"
-    output_path = os.path.join("generated", filename)
-    doc.save(output_path)
-
-    return send_file(output_path, as_attachment=True)
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
 
 @app.route("/chat", methods=["POST"])
 def chat():
