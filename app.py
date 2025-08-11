@@ -410,6 +410,37 @@ def chat():
             "🟨 **Euro Pallet**:\n- Size: 1.2m × 0.8m\n- Load capacity: ~800 kg\n- Fits **21 pallets per bay**\n\n"
             "Pallets are used for racking, picking, and transport. DSV also offers VAS like pallet loading, shrink wrapping, labeling, and stretch film wrapping for safe handling."
         })
+# --- All Storage Rates at Once (catch "all rates") ---
+    if match([
+    r"^all\s+rates?$",
+    r"^all\s+storage\s+rates?$",
+    r"^full\s+rates?$",
+    r"^complete\s+rates?$",
+    r"^show\s*all\s*rates$",
+    r"all.*storage.*rates?",
+    r"complete.*storage.*rates?",
+    r"all.*rates?",
+    r"list.*storage.*fees",
+    r"storage.*rate.*overview",
+    r"summary.*storage.*rates?",
+    r"show.*all.*storage.*charges",
+    r"storage.*rates?.*all",
+    r"rates?\s*for\s*all\s*storage"
+]):
+        return jsonify({"reply":
+        "**Here are the current DSV Abu Dhabi storage rates:**\n\n"
+        "**📦 Standard Storage:**\n"
+        "- AC: 2.5 AED/CBM/day\n"
+        "- Non-AC: 2.0 AED/CBM/day\n"
+        "- Open Shed: 1.8 AED/CBM/day\n\n"
+        "**🧪 Chemical Storage:**\n"
+        "- Chemical AC: 3.5 AED/CBM/day\n"
+        "- Chemical Non-AC: 2.7 AED/CBM/day\n\n"
+        "**🏗 Open Yard Storage:**\n"
+        "- KIZAD: 125 AED/SQM/year\n"
+        "- Mussafah: 160 AED/SQM/year\n\n"
+        "*WMS fee applies to indoor storage unless excluded. For a full quotation, fill out the form.*"
+    })
 
     # --- Storage Rate Initial Question ---
     if match([
