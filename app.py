@@ -6,107 +6,187 @@ import io, os, re
 app = Flask(__name__)
 
 # ------------------------------------------------------------
-# Routes
+# Helpers for DOCX placeholder replacement & table editing
+# ------------------------------------------------------------
+def replace_in_paragraph(paragraph, mapping):
+    """Replace {{PLACEHOLDER}} across runs in a paragraph."""
+    if not paragraph.runs:
+        return
+    full = "".join(run.text for run in paragraph.runs)
+    new = full
+    for k, v in mapping.items():
+        new = new.replace(k, v)
+    if new != full:
+        for r in paragraph.runs:
+            r.text = ""
+        paragraph.runs[0].text = new
+
+def replace_everywhere(doc, mapping):
+    """Replace placeholders in all paragraphs and table cells."""
+    for p in doc.paragraphs:
+        replace_in_paragraph(p, mapping)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    replace_in_paragraph(p, mapping)
+
+def find_details_table(doc):
+    """
+    Try to find the Quotation Details table by header row containing:
+    'Item' + 'Unit Rate' + 'Amount' (order-insensitive).
+    If not found, return None.
+    """
+    for tbl in doc.tables:
+        if not tbl.rows:
+            continue
+        header_text = " | ".join(c.text.strip() for c in tbl.rows[0].cells)
+        if ("Item" in header_text and "Unit Rate" in header_text and "Amount" in header_text):
+            return tbl
+    return None
+
+def clear_table_body(table):
+    """Remove all rows except the header row."""
+    while len(table.rows) > 1:
+        r = table.rows[1]
+        # python-docx internal XML removal
+        table._tbl.remove(r._tr)
+
+def add_row(table, item, unit_rate="", amount=""):
+    row = table.add_row()
+    cells = row.cells
+    # The table is expected to have at least 3 cols: Item | Unit Rate | Amount
+    cells[0].text = str(item) if item is not None else ""
+    # guard in case template merged columns weirdly
+    if len(cells) > 1:
+        cells[1].text = str(unit_rate) if unit_rate is not None else ""
+    if len(cells) > 2:
+        cells[2].text = str(amount) if amount is not None else ""
+
+
+# ------------------------------------------------------------
+# UI
 # ------------------------------------------------------------
 @app.route("/")
 def home():
-    # transport form + embedded chatbot
     return render_template("transport_form.html")
 
 
+# ------------------------------------------------------------
+# Generate Transportation Quotation (only chosen inputs)
+# ------------------------------------------------------------
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
-    """
-    Build a transportation quotation DOCX using the provided transport form fields.
-    Uses the supplied template: templates/TransportQuotation.docx
-    It fills: {{TODAY_DATE}}, {{FROM}}, {{TO}}, {{TRUCK_TYPE}}, {{GENERAL}}, {{CHEMICAL}}
-    """
     origin         = (request.form.get("origin") or "").strip()
     destination    = (request.form.get("destination") or "").strip()
     trip_type      = (request.form.get("trip_type") or "one_way").strip()
     cargo_type     = (request.form.get("cargo_type") or "general").strip().lower()
     cicpa          = (request.form.get("cicpa") or "No").strip()
-    stops          = request.form.getlist("additional_cities[]") or []
+    stops          = [s.strip() for s in request.form.getlist("additional_cities[]") if s.strip()]
+
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
-    # Build a friendly truck summary (multiple rows → one line)
+    # Labels used in the document summary
     truck_labels = {
         "flatbed":         "Flatbed (22–25T)",
         "box":             "Box / Curtainside (5–10T)",
         "reefer":          "Refrigerated (3–12T)",
-        "city":            "City Truck (1–3T)",
+        "city":            "City (1–3T)",
         "tipper":          "Tipper / Dump (15–20T)",
         "double_trailer":  "Double Trailer",
         "10_ton":          "10-Ton Truck",
-        "lowbed":          "Lowbed"
+        "lowbed":          "Lowbed",
     }
+
+    # Summaries
     truck_summary_parts = []
+    chosen_trucks = []  # list of tuples (label, qty)
     for t, q in zip(truck_types, truck_qty_list):
         t = (t or "").strip()
         q = (q or "").strip()
         if not t or not q:
             continue
-        # keep integer-like qty clean
         try:
             qty = int(float(q))
-        except:
+        except Exception:
             qty = q
         label = truck_labels.get(t, t.title())
         truck_summary_parts.append(f"{label} x {qty}")
+        chosen_trucks.append((label, qty))
 
     truck_summary = "; ".join(truck_summary_parts) if truck_summary_parts else "N/A"
+    route_parts = [p for p in [origin] + stops + [destination] if p]
+    route_str = " \u2192 ".join(route_parts) if route_parts else "N/A"  # nice arrow
 
-    # Build a human route string (origin → stops → destination) for clarity if needed later
-    route_parts = [p for p in [origin] + [s.strip() for s in stops if s.strip()] + [destination] if p]
-    route_str = " \u2192 ".join(route_parts) if route_parts else "N/A"  # → arrow
+    # Cargo flags (if your template uses them)
+    general_flag  = "General Cargo" if cargo_type in ("general", "container") else ""
+    chemical_flag = "Chemical Load" if cargo_type == "chemical" else ""
+    trip_label = {"one_way": "One Way", "back_load": "Back Load", "multi": "Multiple"}.get(trip_type, "One Way")
 
-    # Choose cargo flags for template placeholders {{GENERAL}} {{CHEMICAL}}
-    general_flag  = "General Cargo"   if cargo_type in ("general", "container") else ""
-    chemical_flag = "Chemical Load"   if cargo_type == "chemical" else ""
-
-    # Open template and replace placeholders (robust across Word "runs")
+    # Open template
     tpl_path = os.path.join("templates", "TransportQuotation.docx")
+    if not os.path.exists(tpl_path):
+        return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
+
     doc = Document(tpl_path)
 
+    # Replace simple placeholders anywhere in the file
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
         "{{FROM}}":       origin or "N/A",
         "{{TO}}":         destination or "N/A",
         "{{TRUCK_TYPE}}": truck_summary,
         "{{GENERAL}}":    general_flag,
-        "{{CHEMICAL}}":   chemical_flag
+        "{{CHEMICAL}}":   chemical_flag,
+        "{{TRIP_TYPE}}":  trip_label,
+        "{{CICPA}}":      cicpa,
     }
+    replace_everywhere(doc, placeholders)
 
-    def _replace_in_paragraph(p, mapping):
-        if not p.runs:
-            return
-        full = "".join(run.text for run in p.runs)
-        new  = full
-        for k, v in mapping.items():
-            new = new.replace(k, v)
-        if new != full:
-            for r in p.runs:
-                r.text = ""
-            p.runs[0].text = new
+    # Now rewrite the Quotation Details table to ONLY reflect selections
+    table = find_details_table(doc)
+    if table:
+        # 1) wipe all rows except header
+        clear_table_body(table)
 
-    def _replace_everywhere(doc_obj, mapping):
-        for p in doc_obj.paragraphs:
-            _replace_in_paragraph(p, mapping)
-        for table in doc_obj.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for p in cell.paragraphs:
-                        _replace_in_paragraph(p, mapping)
+        # 2) add rows that mirror the UI selections ONLY
+        add_row(table, f"Trip Type: {trip_label}", "", "")
+        if stops:
+            add_row(table, f"Route: {origin} \u2192 {' \u2192 '.join(stops)} \u2192 {destination}", "", "")
+        else:
+            add_row(table, f"Route: {origin} \u2192 {destination}", "", "")
+        add_row(table, f"Cargo Type: {cargo_type.title()}", "", "")
+        add_row(table, f"CICPA Required: {cicpa}", "", "")
 
-    _replace_everywhere(doc, placeholders)
+        # Truck lines (no rates yet; only reflect selections)
+        if chosen_trucks:
+            for label, qty in chosen_trucks:
+                add_row(table, f"{label} x {qty}", "", "")
+        else:
+            add_row(table, "No truck types selected", "", "")
 
-    # Stream to browser
+        # Optional final row for totals (left blank until pricing engine is added)
+        add_row(table, "Total Fee", "", "")
+    else:
+        # If the table wasn't found, add a small section to the end so you still get a clean output
+        doc.add_paragraph("Quotation Details")
+        small = doc.add_table(rows=1, cols=3)
+        hdr = small.rows[0].cells
+        hdr[0].text = "Item"; hdr[1].text = "Unit Rate"; hdr[2].text = "Amount (AED)"
+        add_row(small, f"Trip Type: {trip_label}", "", "")
+        add_row(small, f"Route: {route_str}", "", "")
+        add_row(small, f"Cargo Type: {cargo_type.title()}", "", "")
+        add_row(small, f"CICPA Required: {cicpa}", "", "")
+        for label, qty in chosen_trucks:
+            add_row(small, f"{label} x {qty}", "", "")
+        add_row(small, "Total Fee", "", "")
+
+    # Stream back to browser
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
 
-    # File name example: Transport_Quotation_AbuDhabiToDubai.docx
     name_from = (origin or "Origin").replace(" ", "")
     name_to   = (destination or "Destination").replace(" ", "")
     download_name = f"Transport_Quotation_{name_from}To{name_to}.docx"
