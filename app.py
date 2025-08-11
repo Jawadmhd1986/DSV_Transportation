@@ -55,7 +55,7 @@ def generate():
         rate, unit, rate_unit, storage_fee = 0, "CBM", "CBM / DAY", 0
 
     storage_fee = round(storage_fee, 2)
-    months = max(1, days // 30)  # keep your existing logic
+    months = max(1, days // 30)
     is_open_yard = "open yard" in storage_type.lower()
     wms_fee = 0 if is_open_yard or not include_wms else 1500 * months
     total_fee = round(storage_fee + wms_fee, 2)
@@ -71,15 +71,21 @@ def generate():
         "{{WMS_FEE}}": f"{wms_fee:,.2f} AED",
         "{{TOTAL_FEE}}": f"{total_fee:,.2f} AED",
         "{{TODAY_DATE}}": today_str,
-        "{{COMMODITY}}": commodity or "N/A",  # ← added
+        "{{COMMODITY}}": commodity or "N/A",
     }
 
-    # Replace while preserving formatting (runs)
+    # Replace placeholders even if Word split them across runs
     def replace_in_paragraph(paragraph, mapping):
+        if not paragraph.runs:
+            return
+        full_text = "".join(run.text for run in paragraph.runs)
+        new_text = full_text
         for key, val in mapping.items():
-            if key in paragraph.text:
-                for run in paragraph.runs:
-                    run.text = run.text.replace(key, val)
+            new_text = new_text.replace(key, val)
+        if new_text != full_text:
+            for run in paragraph.runs:
+                run.text = ""
+            paragraph.runs[0].text = new_text
 
     def replace_placeholders(doc_obj, mapping):
         for p in doc_obj.paragraphs:
