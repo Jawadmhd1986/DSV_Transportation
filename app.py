@@ -1,111 +1,116 @@
 from flask import Flask, render_template, request, send_file, jsonify
-from docxtpl import DocxTemplate
-import os
-import io
-import re
-from datetime import date
+from docx import Document
+from datetime import datetime
+import io, os, re
 
 app = Flask(__name__)
-# If your frontend is on a different origin, uncomment these two lines:
-# from flask_cors import CORS
-# CORS(app, resources={r"/chat": {"origins": "*"}})
 
-# ----------------------------
-# Price rates by city & truck
-# ----------------------------
-rates = {
-    "Abu Dhabi City Limits": {"3 Ton Pickup": 400, "7 Ton Pickup": 550, "Flatbed": 800, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
-    "Ajman": {"3 Ton Pickup": 700, "7 Ton Pickup": 1200, "Flatbed": 1750, "Hazmat FB": 2900, "Curtain side Trailer": 2300},
-    "Al Ain City Limits": {"3 Ton Pickup": 690, "7 Ton Pickup": 890, "Flatbed": 1400, "Hazmat FB": 2350, "Curtain side Trailer": 1700},
-    "Al Markaz Area": {"3 Ton Pickup": 400, "7 Ton Pickup": 500, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1300},
-    "Al Wthba": {"3 Ton Pickup": 450, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
-    "Al Wathba": {"3 Ton Pickup": 450, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
-    "Alain Industrial Area": {"3 Ton Pickup": 650, "7 Ton Pickup": 850, "Flatbed": 1300, "Hazmat FB": 2200, "Curtain side Trailer": 1600},
-    "AUH Airport": {"3 Ton Pickup": 400, "7 Ton Pickup": 600, "Flatbed": 800, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
-    "Baniyas": {"3 Ton Pickup": 400, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1300},
-    "Dubai-Al Quoz": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1350, "Hazmat FB": 2300, "Curtain side Trailer": 1850},
-    "Dubai-Al Qusais": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1400, "Hazmat FB": 2400, "Curtain side Trailer": 1950},
-    "Dubai-City Limits": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1400, "Hazmat FB": 2400, "Curtain side Trailer": 1900},
-    "Dubai-DIP/DIC": {"3 Ton Pickup": 600, "7 Ton Pickup": 850, "Flatbed": 1200, "Hazmat FB": 2100, "Curtain side Trailer": 1650},
-    "Dubai-DMC": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1350, "Hazmat FB": 2400, "Curtain side Trailer": 1900},
-    "Fujairah": {"3 Ton Pickup": 950, "7 Ton Pickup": 1500, "Flatbed": 2300, "Hazmat FB": 3400, "Curtain side Trailer": 3100},
-    "Ghantoot": {"3 Ton Pickup": 550, "7 Ton Pickup": 700, "Flatbed": 1000, "Hazmat FB": 1650, "Curtain side Trailer": 1350},
-    "ICAD 2/ICAD3": {"3 Ton Pickup": 350, "7 Ton Pickup": 450, "Flatbed": 500, "Hazmat FB": 950, "Curtain side Trailer": 850},
-    "ICAD 4": {"3 Ton Pickup": 350, "7 Ton Pickup": 485, "Flatbed": 550, "Hazmat FB": 1000, "Curtain side Trailer": 950},
-    "Jebel Ali": {"3 Ton Pickup": 600, "7 Ton Pickup": 850, "Flatbed": 1200, "Hazmat FB": 2100, "Curtain side Trailer": 1650},
-    "Khalifa Port/Taweelah": {"3 Ton Pickup": 400, "7 Ton Pickup": 500, "Flatbed": 750, "Hazmat FB": 1300, "Curtain side Trailer": 1200},
-    "KIZAD": {"3 Ton Pickup": 400, "7 Ton Pickup": 500, "Flatbed": 750, "Hazmat FB": 1300, "Curtain side Trailer": 1200},
-    "Mafraq": {"3 Ton Pickup": 350, "7 Ton Pickup": 550, "Flatbed": 650, "Hazmat FB": 1100, "Curtain side Trailer": 900},
-    "Mina Zayed/Free Port": {"3 Ton Pickup": 400, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
-    "Mussafah": {"3 Ton Pickup": 300, "7 Ton Pickup": 350, "Flatbed": 400, "Hazmat FB": 900, "Curtain side Trailer": 750},
-    "Ras Al Khaimah-Al Ghail": {"3 Ton Pickup": 950, "7 Ton Pickup": 1400, "Flatbed": 1950, "Hazmat FB": 3200, "Curtain side Trailer": 2700},
-    "Ras Al Khaimah-Hamra": {"3 Ton Pickup": 1050, "7 Ton Pickup": 1400, "Flatbed": 2100, "Hazmat FB": 3200, "Curtain side Trailer": 2800},
-    "Sharjah": {"3 Ton Pickup": 680, "7 Ton Pickup": 1100, "Flatbed": 1600, "Hazmat FB": 2700, "Curtain side Trailer": 2100},
-    "Sharjah-Hamriyah": {"3 Ton Pickup": 680, "7 Ton Pickup": 1100, "Flatbed": 1600, "Hazmat FB": 2700, "Curtain side Trailer": 2100},
-    "Sweihan": {"3 Ton Pickup": 600, "7 Ton Pickup": 725, "Flatbed": 950, "Hazmat FB": 1600, "Curtain side Trailer": 1300},
-    "Tawazun Industrial Park": {"3 Ton Pickup": 500, "7 Ton Pickup": 650, "Flatbed": 850, "Hazmat FB": 1500, "Curtain side Trailer": 1300},
-    "Umm Al Quwain": {"3 Ton Pickup": 900, "7 Ton Pickup": 1300, "Flatbed": 1900, "Hazmat FB": 3000, "Curtain side Trailer": 2500},
-    "Yas Island": {"3 Ton Pickup": 400, "7 Ton Pickup": 650, "Flatbed": 800, "Hazmat FB": 1400, "Curtain side Trailer": 1200},
-}
-
-# ----------------------------
-# Helpers
-# ----------------------------
-def aed(value: float) -> str:
-    return f"{float(value):,.2f} AED"
-
-# ----------------------------
+# ------------------------------------------------------------
 # Routes
-# ----------------------------
+# ------------------------------------------------------------
 @app.route("/")
 def home():
+    # transport form + embedded chatbot
     return render_template("transport_form.html")
+
 
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
-    # Accept both names just in case your form uses "origin" instead of "from_city"
-    from_city = (request.form.get("from_city") or request.form.get("origin") or "").strip()
-    truck_type = (request.form.get("truck_type") or "").strip()
-    destination = (request.form.get("destination") or "").strip()
-    trip_type = (request.form.get("trip_type") or "").strip()
-    cicpa_selected = (request.form.get("cicpa", "No") == "Yes")
+    """
+    Build a transportation quotation DOCX using the provided transport form fields.
+    Uses the supplied template: templates/TransportQuotation.docx
+    It fills: {{TODAY_DATE}}, {{FROM}}, {{TO}}, {{TRUCK_TYPE}}, {{GENERAL}}, {{CHEMICAL}}
+    """
+    origin         = (request.form.get("origin") or "").strip()
+    destination    = (request.form.get("destination") or "").strip()
+    trip_type      = (request.form.get("trip_type") or "one_way").strip()
+    cargo_type     = (request.form.get("cargo_type") or "general").strip().lower()
+    cicpa          = (request.form.get("cicpa") or "No").strip()
+    stops          = request.form.getlist("additional_cities[]") or []
+    truck_types    = request.form.getlist("truck_type[]") or []
+    truck_qty_list = request.form.getlist("truck_qty[]") or []
 
-    if not from_city or not truck_type:
-        return "Please select a city and truck type.", 400
-
-    city_rates = rates.get(from_city)
-    if not city_rates:
-        return f"City not found in rate table: {from_city}", 400
-
-    price = city_rates.get(truck_type)
-    if price is None:
-        return f"Truck type '{truck_type}' not found for {from_city}.", 400
-
-    cicpa_fee = 150 if cicpa_selected else 0
-    total_fee = float(price) + cicpa_fee
-
-    tpl_path = os.path.join("templates", "TransportQuotation.docx")
-    if not os.path.exists(tpl_path):
-        return "Template not found: templates/TransportQuotation.docx", 500
-
-    tpl = DocxTemplate(tpl_path)
-    context = {
-        "TRUCK_TYPE": truck_type,
-        "FROM": from_city,
-        "TO": destination,
-        "TRIP_TYPE": trip_type,
-        "CICPA": "Included" if cicpa_selected else "Not Included",
-        "UNIT_RATE": aed(price),
-        "TOTAL_FEE": aed(total_fee),
-        "TODAY_DATE": date.today().strftime("%d %b %Y"),
+    # Build a friendly truck summary (multiple rows → one line)
+    truck_labels = {
+        "flatbed":         "Flatbed (22–25T)",
+        "box":             "Box / Curtainside (5–10T)",
+        "reefer":          "Refrigerated (3–12T)",
+        "city":            "City Truck (1–3T)",
+        "tipper":          "Tipper / Dump (15–20T)",
+        "double_trailer":  "Double Trailer",
+        "10_ton":          "10-Ton Truck",
+        "lowbed":          "Lowbed"
     }
-    tpl.render(context)
+    truck_summary_parts = []
+    for t, q in zip(truck_types, truck_qty_list):
+        t = (t or "").strip()
+        q = (q or "").strip()
+        if not t or not q:
+            continue
+        # keep integer-like qty clean
+        try:
+            qty = int(float(q))
+        except:
+            qty = q
+        label = truck_labels.get(t, t.title())
+        truck_summary_parts.append(f"{label} x {qty}")
 
+    truck_summary = "; ".join(truck_summary_parts) if truck_summary_parts else "N/A"
+
+    # Build a human route string (origin → stops → destination) for clarity if needed later
+    route_parts = [p for p in [origin] + [s.strip() for s in stops if s.strip()] + [destination] if p]
+    route_str = " \u2192 ".join(route_parts) if route_parts else "N/A"  # → arrow
+
+    # Choose cargo flags for template placeholders {{GENERAL}} {{CHEMICAL}}
+    general_flag  = "General Cargo"   if cargo_type in ("general", "container") else ""
+    chemical_flag = "Chemical Load"   if cargo_type == "chemical" else ""
+
+    # Open template and replace placeholders (robust across Word "runs")
+    tpl_path = os.path.join("templates", "TransportQuotation.docx")
+    doc = Document(tpl_path)
+
+    placeholders = {
+        "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
+        "{{FROM}}":       origin or "N/A",
+        "{{TO}}":         destination or "N/A",
+        "{{TRUCK_TYPE}}": truck_summary,
+        "{{GENERAL}}":    general_flag,
+        "{{CHEMICAL}}":   chemical_flag
+    }
+
+    def _replace_in_paragraph(p, mapping):
+        if not p.runs:
+            return
+        full = "".join(run.text for run in p.runs)
+        new  = full
+        for k, v in mapping.items():
+            new = new.replace(k, v)
+        if new != full:
+            for r in p.runs:
+                r.text = ""
+            p.runs[0].text = new
+
+    def _replace_everywhere(doc_obj, mapping):
+        for p in doc_obj.paragraphs:
+            _replace_in_paragraph(p, mapping)
+        for table in doc_obj.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        _replace_in_paragraph(p, mapping)
+
+    _replace_everywhere(doc, placeholders)
+
+    # Stream to browser
     buf = io.BytesIO()
-    tpl.save(buf)
+    doc.save(buf)
     buf.seek(0)
-    dl_name = f"TransportQuotation_{from_city.replace(' ', '_')}_{truck_type.replace(' ', '_')}.docx"
-    return send_file(buf, as_attachment=True, download_name=dl_name)
+
+    # File name example: Transport_Quotation_AbuDhabiToDubai.docx
+    name_from = (origin or "Origin").replace(" ", "")
+    name_to   = (destination or "Destination").replace(" ", "")
+    download_name = f"Transport_Quotation_{name_from}To{name_to}.docx"
+    return send_file(buf, as_attachment=True, download_name=download_name)
 
     app.run(host="0.0.0.0", port=port, debug=True)
 
