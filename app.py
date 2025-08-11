@@ -16,7 +16,7 @@ def generate():
     volume = float(request.form.get("volume", 0))
     days = int(request.form.get("days", 0))
     include_wms = request.form.get("wms", "No") == "Yes"
-    commodity = request.form.get("commodity", "")
+    commodity = request.form.get("commodity", "").strip()
     today_str = datetime.today().strftime("%d %b %Y")
 
     # Pick template based on storage_type
@@ -162,7 +162,7 @@ def generate():
         delete_block(doc, "[VAS_OPENYARD]", "[/VAS_OPENYARD]")
 
     os.makedirs("generated", exist_ok=True)
-    filename_prefix = email.split("@")[0] if email else "quotation"
+    filename_prefix = commodity if commodity else "quotation"
     filename = f"Quotation_{filename_prefix}.docx"
     output_path = os.path.join("generated", filename)
     doc.save(output_path)
