@@ -1,14 +1,14 @@
-from flask import Flask, render_template, request, send_file, jsonify
-from docx import Document
+from flask import Flask, render_template, request, send_file
+from docxtpl import DocxTemplate
 import os
 import io
 from datetime import date
-from flask import Flask, render_template, request, send_file
-from docxtpl import DocxTemplate
 
 app = Flask(__name__)
 
-# Price rates dictionary by city and truck type
+# ----------------------------
+# Price rates by city & truck
+# ----------------------------
 rates = {
     "Abu Dhabi City Limits": {
         "3 Ton Pickup": 400,
@@ -229,51 +229,76 @@ rates = {
     }
 }
 
-@app.route('/')
+# ----------------------------
+# Helpers
+# ----------------------------
+def aed(value: float) -> str:
+    return f"{float(value):,.2f} AED"
+
+# ----------------------------
+# Routes
+# ----------------------------
+@app.route("/")
 def home():
-    # Render form page
-    return render_template('transport_form.html')
+    return render_template("transport_form.html")
 
-@app.route('/generate_transport', methods=['POST'])
+@app.route("/generate_transport", methods=["POST"])
 def generate_transport():
-    # Get form data
-    truck_type = request.form.get('truck_type')
-    from_city = request.form.get('from_city')
+    # Accept both names just in case your form uses "origin" instead of "from_city"
+    from_city = (request.form.get("from_city") or request.form.get("origin") or "").strip()
+    truck_type = (request.form.get("truck_type") or "").strip()
+    # Optional fields (only used if your template has them)
+    destination = (request.form.get("destination") or "").strip()
+    trip_type = (request.form.get("trip_type") or "").strip()
+    cicpa_selected = (request.form.get("cicpa", "No") == "Yes")
 
-    # Get the price based on city and truck type
+    # Validate
+    if not from_city or not truck_type:
+        return "Please select a city and truck type.", 400
+
     city_rates = rates.get(from_city)
     if not city_rates:
-        return "City not found", 400
+        return f"City not found in rate table: {from_city}", 400
 
     price = city_rates.get(truck_type)
     if price is None:
-        return "Truck type not found for the selected city", 400
+        return f"Truck type '{truck_type}' not found for {from_city}.", 400
 
-    # Load the Word template
-    tpl = DocxTemplate("templates/TransportQuotation.docx")
+    # If CICPA should add a fee, set it here (change 150 if your policy differs)
+    cicpa_fee = 150 if cicpa_selected else 0
+    total_fee = float(price) + cicpa_fee
 
-    # Prepare context for template rendering
+    # Render the Word template
+    tpl_path = os.path.join("templates", "TransportQuotation.docx")
+    if not os.path.exists(tpl_path):
+        return "Template not found: templates/TransportQuotation.docx", 500
+
+    tpl = DocxTemplate(tpl_path)
     context = {
-        'TRUCK_TYPE': truck_type,
-        'FROM': from_city,
-        'UNIT_RATE': price,
-        'TOTAL_FEE': price  # If needed, can calculate more fees here
+        "TRUCK_TYPE": truck_type,
+        "FROM": from_city,
+        "TO": destination,                 
+        "TRIP_TYPE": trip_type,            
+        "CICPA": "Included" if cicpa_selected else "Not Included",
+        "UNIT_RATE": aed(price),
+        "TOTAL_FEE": aed(total_fee),
+        "TODAY_DATE": date.today().strftime("%d %b %Y"),
     }
-
-    # Render the template with context
     tpl.render(context)
 
-    # Save to in-memory bytes buffer
-    file_stream = io.BytesIO()
-    tpl.save(file_stream)
-    file_stream.seek(0)
+    # Stream the generated file (no disk writes)
+    buf = io.BytesIO()
+    tpl.save(buf)
+    buf.seek(0)
+    dl_name = f"TransportQuotation_{from_city.replace(' ', '_')}_{truck_type.replace(' ', '_')}.docx"
+    return send_file(buf, as_attachment=True, download_name=dl_name)
 
-    # Send the generated docx file to the user
-    return send_file(file_stream, as_attachment=True, download_name='TransportQuotation.docx')
-
-if __name__ == '__main__':
+# ----------------------------
+# Local run (Render uses gunicorn)
+# ----------------------------
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True)
 
 @app.route("/chat", methods=["POST"])
 def chat():
