@@ -58,7 +58,6 @@ def norm_truck(s: str) -> str:
 # Detects delimiters: comma / semicolon / tab
 # ──────────────────────────────────────────────────────────────────────────────
 def _detect_delimiter(sample: str) -> str:
-    # Prefer the one yielding the most columns in the header
     candidates = [",", ";", "\t", "|"]
     best = ","
     best_cols = 1
@@ -73,7 +72,7 @@ def _detect_delimiter(sample: str) -> str:
 def _read_text(path: str) -> str:
     with open(path, "r", encoding="utf-8-sig", errors="ignore") as f:
         txt = f.read()
-    # If each line looks like "a,b,c", strip the outer quotes
+    # If each line is quoted like "a,b,c", strip outer quotes
     lines = txt.splitlines()
     if lines and all(len(ln) > 2 and ln[0] == '"' and ln[-1] == '"' for ln in lines[: min(10, len(lines))]):
         txt = "\n".join(ln[1:-1] for ln in lines)
@@ -90,7 +89,7 @@ def load_rates():
     delim = _detect_delimiter(txt)
     reader = csv.DictReader(txt.splitlines(), delimiter=delim)
 
-    # Normalize header names → our internal keys
+    # Normalize headers
     header_map = {}
     for k in (reader.fieldnames or []):
         lk = (k or "").strip().lower()
@@ -101,12 +100,7 @@ def load_rates():
         elif lk in ("chemical_rate", "chemical", "hazmat", "hazmat rate"): header_map[k] = "chemical_rate"
         else: header_map[k] = lk
 
-    count_rows = 0
-    count_pairs = 0
     for row in reader:
-        count_rows += 1
-
-        # remap keys
         r = { header_map.get(k,k): (row.get(k,"") if row.get(k) is not None else "") for k in row }
 
         origin = norm_city(r.get("origin") or "*")
@@ -117,11 +111,9 @@ def load_rates():
         gen_raw = (r.get("general_rate") or "").strip()
         haz_raw = (r.get("chemical_rate") or "").strip()
 
-        # If it's the 3-column list and 'Hazmat FB', put that into chemical
+        # 3‑column list handling
         if not gen_raw and not haz_raw and t_raw.strip().lower() == "hazmat fb" and r.get("general_rate") is not None:
             haz_raw = (r.get("general_rate") or "").strip()
-
-        # If it's the 3-column list and NOT hazmat: it's general
         if not gen_raw and not haz_raw and r.get("general_rate") is not None and t_raw.strip().lower() != "hazmat fb":
             gen_raw = (r.get("general_rate") or "").strip()
 
@@ -129,17 +121,13 @@ def load_rates():
             continue
 
         key = (origin or "*", dest)
-        truck_map = rates.setdefault(key, {})
-        cell = truck_map.setdefault(ttype, {"general": None, "chemical": None})
-
+        cell = rates.setdefault(key, {}).setdefault(ttype, {"general": None, "chemical": None})
         if gen_raw:
             cell["general"] = q2d(gen_raw)
-            count_pairs += 1
         if haz_raw:
             cell["chemical"] = q2d(haz_raw)
-            count_pairs += 1
 
-    print(f"[transport] rates rows read: {count_rows}, price cells loaded: {count_pairs}, keys: {len(rates)}")
+    print(f"[transport] rates keys loaded: {len(rates)}")
     return rates
 
 RATES = load_rates()
@@ -151,8 +139,7 @@ def lookup_rate(origin, destination, truck_type, cargo_type):
     # Priority: (origin,destination) → ('*',destination) → (origin,'*')
     for key in ((o, d), ("*", d), (o, "*")):
         if key in RATES:
-            truck_map = RATES[key]
-            data = truck_map.get(t)
+            data = RATES[key].get(t)
             if data:
                 val = data.get(cargo_key) or data.get("general")
                 if val is not None:
@@ -210,7 +197,7 @@ def add_row(table, item, unit_rate="", amount=""):
 def home():
     return render_template("transport_form.html")
 
-# Quick debug hook: /rates_debug?from=Mussafah&to=Mafraq&truck=flatbed&cargo=general
+# Quick debug: /rates_debug?from=Mussafah&to=Mafraq&truck=flatbed&cargo=general
 @app.route("/rates_debug")
 def rates_debug():
     o = request.args.get("from", "")
@@ -225,7 +212,7 @@ def rates_debug():
     })
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Generate Transportation Quotation (uses CSV rates)
+# Generate Transportation Quotation (ONLY rate lines + totals in the table)
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
@@ -258,6 +245,7 @@ def generate_transport():
 
     backload_mult = DEC("1.60") if trip_type == "back_load" else DEC("1.00")
 
+    # Normalize chosen trucks
     chosen_trucks = []
     for t, q in zip(truck_types, truck_qty_list):
         nt = norm_truck(t)
@@ -275,22 +263,18 @@ def generate_transport():
         label = truck_labels.get(t, t.title())
         combined = DEC("0")
         leg_descs = []
-        missing_any = False
 
         for (frm, to) in legs:
             rate = lookup_rate(frm, to, t, cargo_type)
             if rate is None:
-                missing_any = True
-                leg_descs.append(f"{frm} → {to}: N/A")
+                # skip legs with no rate (we only show priced lines)
                 continue
-
             leg_rate = (rate * backload_mult)
             combined += (leg_rate * qty)
             leg_descs.append(f"{frm} → {to}: AED {money(leg_rate)} x {qty}")
 
-        if missing_any and combined == 0:
-            per_truck_rows.append((f"{label} x {qty} — (rate missing for one or more legs)", "N/A", ""))
-        else:
+        # Only add row if we actually priced something
+        if combined > 0 and leg_descs:
             unit_rate_str = f"AED {money((combined/qty) if qty else combined)}"
             amount_str    = f"AED {money(combined)}"
             per_truck_rows.append((f"{label} x {qty} — " + " | ".join(leg_descs), unit_rate_str, amount_str))
@@ -304,6 +288,7 @@ def generate_transport():
     vat         = pre_vat * DEC("0.05")
     grand_total = pre_vat + vat
 
+    # Summary placeholders (bullets above the table)
     truck_summary = "; ".join(f"{truck_labels.get(t, t.title())} x {qty}" for t, qty in chosen_trucks) or "N/A"
     route_str = " \u2192 ".join([p for p in [origin] + stops + [destination] if p]) or "N/A"
     general_flag  = "General Cargo" if cargo_type in ("general", "container") else ""
@@ -330,33 +315,29 @@ def generate_transport():
     }
     replace_everywhere(doc, placeholders)
 
+    # Rebuild the "Quotation Details" table:
+    # 👉 ONLY priced truck lines + totals (no empty info rows)
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
-        add_row(table, f"Trip Type: {trip_label}", "", "")
-        add_row(table, f"Route: {route_str}", "", "")
-        add_row(table, f"Cargo Type: {cargo_type.title()}", "", "")
-        add_row(table, f"CICPA Required: {cicpa}", "", "")
+
+        # Add each priced truck line
         if per_truck_rows:
             for desc, unit_rate, amount in per_truck_rows:
                 add_row(table, desc, unit_rate, amount)
-        else:
-            add_row(table, "No truck types selected", "", "")
+
+        # Totals
         add_row(table, "Subtotal (trips)", "", f"AED {money(subtotal)}")
         add_row(table, "Environmental Fee (AED 10 / trip / truck)", "", f"AED {money(env_fixed)}")
         add_row(table, "Environmental Levy (0.15% of invoice value)", "", f"AED {money(env_percent)}")
         add_row(table, "VAT 5%", "", f"AED {money(vat)}")
         add_row(table, "Grand Total", "", f"AED {money(grand_total)}")
     else:
-        # Fallback if the template table changes
+        # Fallback if template table changes
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
         hdr[0].text, hdr[1].text, hdr[2].text = "Item", "Unit Rate", "Amount (AED)"
-        add_row(small, f"Trip Type: {trip_label}", "", "")
-        add_row(small, f"Route: {route_str}", "", "")
-        add_row(small, f"Cargo Type: {cargo_type.title()}", "", "")
-        add_row(small, f"CICPA Required: {cicpa}", "", "")
         for desc, unit_rate, amount in per_truck_rows:
             add_row(small, desc, unit_rate, amount)
         add_row(small, "Subtotal (trips)", "", f"AED {money(subtotal)}")
@@ -365,6 +346,7 @@ def generate_transport():
         add_row(small, "VAT 5%", "", f"AED {money(vat)}")
         add_row(small, "Grand Total", "", f"AED {money(grand_total)}")
 
+    # Stream file
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
