@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 from docxtpl import DocxTemplate
 import os
 import io
@@ -6,228 +6,46 @@ import re
 from datetime import date
 
 app = Flask(__name__)
+# If your frontend is on a different origin, uncomment these two lines:
+# from flask_cors import CORS
+# CORS(app, resources={r"/chat": {"origins": "*"}})
 
 # ----------------------------
 # Price rates by city & truck
 # ----------------------------
 rates = {
-    "Abu Dhabi City Limits": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 550,
-        "Flatbed": 800,
-        "Hazmat FB": 1350,
-        "Curtain side Trailer": 1100
-    },
-    "Ajman": {
-        "3 Ton Pickup": 700,
-        "7 Ton Pickup": 1200,
-        "Flatbed": 1750,
-        "Hazmat FB": 2900,
-        "Curtain side Trailer": 2300
-    },
-    "Al Ain City Limits": {
-        "3 Ton Pickup": 690,
-        "7 Ton Pickup": 890,
-        "Flatbed": 1400,
-        "Hazmat FB": 2350,
-        "Curtain side Trailer": 1700
-    },
-    "Al Markaz Area": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 500,
-        "Flatbed": 750,
-        "Hazmat FB": 1350,
-        "Curtain side Trailer": 1300
-    },
-    "Al Wathba": {
-        "3 Ton Pickup": 450,
-        "7 Ton Pickup": 600,
-        "Flatbed": 750,
-        "Hazmat FB": 1350,
-        "Curtain side Trailer": 1100
-    },
-    "Alain Industrial Area": {
-        "3 Ton Pickup": 650,
-        "7 Ton Pickup": 850,
-        "Flatbed": 1300,
-        "Hazmat FB": 2200,
-        "Curtain side Trailer": 1600
-    },
-    "AUH Airport": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 600,
-        "Flatbed": 800,
-        "Hazmat FB": 1350,
-        "Curtain side Trailer": 1100
-    },
-    "Baniyas": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 600,
-        "Flatbed": 750,
-        "Hazmat FB": 1350,
-        "Curtain side Trailer": 1300
-    },
-    "Dubai-Al Quoz": {
-        "3 Ton Pickup": 650,
-        "7 Ton Pickup": 950,
-        "Flatbed": 1350,
-        "Hazmat FB": 2300,
-        "Curtain side Trailer": 1850
-    },
-    "Dubai-Al Qusais": {
-        "3 Ton Pickup": 650,
-        "7 Ton Pickup": 950,
-        "Flatbed": 1400,
-        "Hazmat FB": 2400,
-        "Curtain side Trailer": 1950
-    },
-    "Dubai-City Limits": {
-        "3 Ton Pickup": 650,
-        "7 Ton Pickup": 950,
-        "Flatbed": 1400,
-        "Hazmat FB": 2400,
-        "Curtain side Trailer": 1900
-    },
-    "Dubai-DIP/DIC": {
-        "3 Ton Pickup": 600,
-        "7 Ton Pickup": 850,
-        "Flatbed": 1200,
-        "Hazmat FB": 2100,
-        "Curtain side Trailer": 1650
-    },
-    "Dubai-DMC": {
-        "3 Ton Pickup": 650,
-        "7 Ton Pickup": 950,
-        "Flatbed": 1350,
-        "Hazmat FB": 2400,
-        "Curtain side Trailer": 1900
-    },
-    "Fujairah": {
-        "3 Ton Pickup": 950,
-        "7 Ton Pickup": 1500,
-        "Flatbed": 2300,
-        "Hazmat FB": 3400,
-        "Curtain side Trailer": 3100
-    },
-    "Ghantoot": {
-        "3 Ton Pickup": 550,
-        "7 Ton Pickup": 700,
-        "Flatbed": 1000,
-        "Hazmat FB": 1650,
-        "Curtain side Trailer": 1350
-    },
-    "ICAD 2/ICAD3": {
-        "3 Ton Pickup": 350,
-        "7 Ton Pickup": 450,
-        "Flatbed": 500,
-        "Hazmat FB": 950,
-        "Curtain side Trailer": 850
-    },
-    "ICAD 4": {
-        "3 Ton Pickup": 350,
-        "7 Ton Pickup": 485,
-        "Flatbed": 550,
-        "Hazmat FB": 1000,
-        "Curtain side Trailer": 950
-    },
-    "Jebel Ali": {
-        "3 Ton Pickup": 600,
-        "7 Ton Pickup": 850,
-        "Flatbed": 1200,
-        "Hazmat FB": 2100,
-        "Curtain side Trailer": 1650
-    },
-    "Khalifa Port/Taweelah": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 500,
-        "Flatbed": 750,
-        "Hazmat FB": 1300,
-        "Curtain side Trailer": 1200
-    },
-    "KIZAD": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 500,
-        "Flatbed": 750,
-        "Hazmat FB": 1300,
-        "Curtain side Trailer": 1200
-    },
-    "Mafraq": {
-        "3 Ton Pickup": 350,
-        "7 Ton Pickup": 550,
-        "Flatbed": 650,
-        "Hazmat FB": 1100,
-        "Curtain side Trailer": 900
-    },
-    "Mina Zayed/Free Port": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 600,
-        "Flatbed": 750,
-        "Hazmat FB": 1350,
-        "Curtain side Trailer": 1100
-    },
-    "Mussafah": {
-        "3 Ton Pickup": 300,
-        "7 Ton Pickup": 350,
-        "Flatbed": 400,
-        "Hazmat FB": 900,
-        "Curtain side Trailer": 750
-    },
-    "Ras Al Khaimah-Al Ghail": {
-        "3 Ton Pickup": 950,
-        "7 Ton Pickup": 1400,
-        "Flatbed": 1950,
-        "Hazmat FB": 3200,
-        "Curtain side Trailer": 2700
-    },
-    "Ras Al Khaimah-Hamra": {
-        "3 Ton Pickup": 1050,
-        "7 Ton Pickup": 1400,
-        "Flatbed": 2100,
-        "Hazmat FB": 3200,
-        "Curtain side Trailer": 2800
-    },
-    "Sharjah": {
-        "3 Ton Pickup": 680,
-        "7 Ton Pickup": 1100,
-        "Flatbed": 1600,
-        "Hazmat FB": 2700,
-        "Curtain side Trailer": 2100
-    },
-    "Sharjah-Hamriyah": {
-        "3 Ton Pickup": 680,
-        "7 Ton Pickup": 1100,
-        "Flatbed": 1600,
-        "Hazmat FB": 2700,
-        "Curtain side Trailer": 2100
-    },
-    "Sweihan": {
-        "3 Ton Pickup": 600,
-        "7 Ton Pickup": 725,
-        "Flatbed": 950,
-        "Hazmat FB": 1600,
-        "Curtain side Trailer": 1300
-    },
-    "Tawazun Industrial Park": {
-        "3 Ton Pickup": 500,
-        "7 Ton Pickup": 650,
-        "Flatbed": 850,
-        "Hazmat FB": 1500,
-        "Curtain side Trailer": 1300
-    },
-    "Umm Al Quwain": {
-        "3 Ton Pickup": 900,
-        "7 Ton Pickup": 1300,
-        "Flatbed": 1900,
-        "Hazmat FB": 3000,
-        "Curtain side Trailer": 2500
-    },
-    "Yas Island": {
-        "3 Ton Pickup": 400,
-        "7 Ton Pickup": 650,
-        "Flatbed": 800,
-        "Hazmat FB": 1400,
-        "Curtain side Trailer": 1200
-    }
+    "Abu Dhabi City Limits": {"3 Ton Pickup": 400, "7 Ton Pickup": 550, "Flatbed": 800, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
+    "Ajman": {"3 Ton Pickup": 700, "7 Ton Pickup": 1200, "Flatbed": 1750, "Hazmat FB": 2900, "Curtain side Trailer": 2300},
+    "Al Ain City Limits": {"3 Ton Pickup": 690, "7 Ton Pickup": 890, "Flatbed": 1400, "Hazmat FB": 2350, "Curtain side Trailer": 1700},
+    "Al Markaz Area": {"3 Ton Pickup": 400, "7 Ton Pickup": 500, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1300},
+    "Al Wthba": {"3 Ton Pickup": 450, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
+    "Al Wathba": {"3 Ton Pickup": 450, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
+    "Alain Industrial Area": {"3 Ton Pickup": 650, "7 Ton Pickup": 850, "Flatbed": 1300, "Hazmat FB": 2200, "Curtain side Trailer": 1600},
+    "AUH Airport": {"3 Ton Pickup": 400, "7 Ton Pickup": 600, "Flatbed": 800, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
+    "Baniyas": {"3 Ton Pickup": 400, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1300},
+    "Dubai-Al Quoz": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1350, "Hazmat FB": 2300, "Curtain side Trailer": 1850},
+    "Dubai-Al Qusais": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1400, "Hazmat FB": 2400, "Curtain side Trailer": 1950},
+    "Dubai-City Limits": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1400, "Hazmat FB": 2400, "Curtain side Trailer": 1900},
+    "Dubai-DIP/DIC": {"3 Ton Pickup": 600, "7 Ton Pickup": 850, "Flatbed": 1200, "Hazmat FB": 2100, "Curtain side Trailer": 1650},
+    "Dubai-DMC": {"3 Ton Pickup": 650, "7 Ton Pickup": 950, "Flatbed": 1350, "Hazmat FB": 2400, "Curtain side Trailer": 1900},
+    "Fujairah": {"3 Ton Pickup": 950, "7 Ton Pickup": 1500, "Flatbed": 2300, "Hazmat FB": 3400, "Curtain side Trailer": 3100},
+    "Ghantoot": {"3 Ton Pickup": 550, "7 Ton Pickup": 700, "Flatbed": 1000, "Hazmat FB": 1650, "Curtain side Trailer": 1350},
+    "ICAD 2/ICAD3": {"3 Ton Pickup": 350, "7 Ton Pickup": 450, "Flatbed": 500, "Hazmat FB": 950, "Curtain side Trailer": 850},
+    "ICAD 4": {"3 Ton Pickup": 350, "7 Ton Pickup": 485, "Flatbed": 550, "Hazmat FB": 1000, "Curtain side Trailer": 950},
+    "Jebel Ali": {"3 Ton Pickup": 600, "7 Ton Pickup": 850, "Flatbed": 1200, "Hazmat FB": 2100, "Curtain side Trailer": 1650},
+    "Khalifa Port/Taweelah": {"3 Ton Pickup": 400, "7 Ton Pickup": 500, "Flatbed": 750, "Hazmat FB": 1300, "Curtain side Trailer": 1200},
+    "KIZAD": {"3 Ton Pickup": 400, "7 Ton Pickup": 500, "Flatbed": 750, "Hazmat FB": 1300, "Curtain side Trailer": 1200},
+    "Mafraq": {"3 Ton Pickup": 350, "7 Ton Pickup": 550, "Flatbed": 650, "Hazmat FB": 1100, "Curtain side Trailer": 900},
+    "Mina Zayed/Free Port": {"3 Ton Pickup": 400, "7 Ton Pickup": 600, "Flatbed": 750, "Hazmat FB": 1350, "Curtain side Trailer": 1100},
+    "Mussafah": {"3 Ton Pickup": 300, "7 Ton Pickup": 350, "Flatbed": 400, "Hazmat FB": 900, "Curtain side Trailer": 750},
+    "Ras Al Khaimah-Al Ghail": {"3 Ton Pickup": 950, "7 Ton Pickup": 1400, "Flatbed": 1950, "Hazmat FB": 3200, "Curtain side Trailer": 2700},
+    "Ras Al Khaimah-Hamra": {"3 Ton Pickup": 1050, "7 Ton Pickup": 1400, "Flatbed": 2100, "Hazmat FB": 3200, "Curtain side Trailer": 2800},
+    "Sharjah": {"3 Ton Pickup": 680, "7 Ton Pickup": 1100, "Flatbed": 1600, "Hazmat FB": 2700, "Curtain side Trailer": 2100},
+    "Sharjah-Hamriyah": {"3 Ton Pickup": 680, "7 Ton Pickup": 1100, "Flatbed": 1600, "Hazmat FB": 2700, "Curtain side Trailer": 2100},
+    "Sweihan": {"3 Ton Pickup": 600, "7 Ton Pickup": 725, "Flatbed": 950, "Hazmat FB": 1600, "Curtain side Trailer": 1300},
+    "Tawazun Industrial Park": {"3 Ton Pickup": 500, "7 Ton Pickup": 650, "Flatbed": 850, "Hazmat FB": 1500, "Curtain side Trailer": 1300},
+    "Umm Al Quwain": {"3 Ton Pickup": 900, "7 Ton Pickup": 1300, "Flatbed": 1900, "Hazmat FB": 3000, "Curtain side Trailer": 2500},
+    "Yas Island": {"3 Ton Pickup": 400, "7 Ton Pickup": 650, "Flatbed": 800, "Hazmat FB": 1400, "Curtain side Trailer": 1200},
 }
 
 # ----------------------------
@@ -248,12 +66,10 @@ def generate_transport():
     # Accept both names just in case your form uses "origin" instead of "from_city"
     from_city = (request.form.get("from_city") or request.form.get("origin") or "").strip()
     truck_type = (request.form.get("truck_type") or "").strip()
-    # Optional fields (only used if your template has them)
     destination = (request.form.get("destination") or "").strip()
     trip_type = (request.form.get("trip_type") or "").strip()
     cicpa_selected = (request.form.get("cicpa", "No") == "Yes")
 
-    # Validate
     if not from_city or not truck_type:
         return "Please select a city and truck type.", 400
 
@@ -265,11 +81,9 @@ def generate_transport():
     if price is None:
         return f"Truck type '{truck_type}' not found for {from_city}.", 400
 
-    # If CICPA should add a fee, set it here (change 150 if your policy differs)
     cicpa_fee = 150 if cicpa_selected else 0
     total_fee = float(price) + cicpa_fee
 
-    # Render the Word template
     tpl_path = os.path.join("templates", "TransportQuotation.docx")
     if not os.path.exists(tpl_path):
         return "Template not found: templates/TransportQuotation.docx", 500
@@ -278,8 +92,8 @@ def generate_transport():
     context = {
         "TRUCK_TYPE": truck_type,
         "FROM": from_city,
-        "TO": destination,                 
-        "TRIP_TYPE": trip_type,            
+        "TO": destination,
+        "TRIP_TYPE": trip_type,
         "CICPA": "Included" if cicpa_selected else "Not Included",
         "UNIT_RATE": aed(price),
         "TOTAL_FEE": aed(total_fee),
@@ -287,7 +101,6 @@ def generate_transport():
     }
     tpl.render(context)
 
-    # Stream the generated file (no disk writes)
     buf = io.BytesIO()
     tpl.save(buf)
     buf.seek(0)
