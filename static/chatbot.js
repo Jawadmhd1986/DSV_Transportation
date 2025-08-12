@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ---------------- Transport UI (One Way / Back Load) ----------------
+  // ---------------- Transport UI ----------------
   const tripRadios = document.querySelectorAll('input[name="trip_type"]');
   tripRadios.forEach(radio => {
     radio.addEventListener('change', () => {
@@ -83,22 +83,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Truck rows (use server-provided whitelist)
   const truckTypeContainer = document.getElementById('truckTypeContainer');
   const addTruckTypeBtn    = document.getElementById('add-truck-type');
   const TRUCK_TYPES        = (window.TRUCK_TYPES || []);
 
+  function currentGlobalTrip() {
+    const r = document.querySelector('input[name="trip_type"]:checked');
+    return r ? r.value : 'one_way';
+    // 'one_way' or 'back_load'
+  }
+
   function createTruckRow(){
     const row = document.createElement('div');
     row.className = 'truck-type-row';
-    const options = ['<option value="">— Select Truck Type —</option>']
+
+    const typeOptions = ['<option value="">— Select Truck Type —</option>']
       .concat(TRUCK_TYPES.map(t => `<option value="${t}">${t}</option>`))
       .join('');
+
+    const defaultTrip = currentGlobalTrip();
 
     row.innerHTML = `
       <div class="select-wrapper">
         <label class="inline-label">Type</label>
-        <select name="truck_type[]" required>${options}</select>
+        <select name="truck_type[]" required>${typeOptions}</select>
+
+        <label class="inline-label" style="margin-top:6px;">Trip</label>
+        <select name="truck_trip[]" required>
+          <option value="one_way"${defaultTrip === 'one_way' ? ' selected' : ''}>One Way</option>
+          <option value="back_load"${defaultTrip === 'back_load' ? ' selected' : ''}>Back Load</option>
+        </select>
       </div>
       <div class="qty-wrapper">
         <label class="inline-label">QTY</label>
@@ -110,9 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return row;
   }
 
-  // ---------------- CICPA filtering add-on ----------------
+  // ---- CICPA filtering (unchanged) ----
   const destSel = document.getElementById('destination');
-
   const CICPA_CITY_SET = new Set(
     (window.CICPA_CITIES || []).map(s =>
       (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' ').replace(/[_–—]/g, '-')
@@ -127,19 +140,16 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/\s+/g, ' ')
       .replace(/[_–—]/g, '-');
   }
-
   function isCICPASelected() {
-    if (!destSel || !destSel.value) return null; // no selection yet
+    if (!destSel || !destSel.value) return null;
     return CICPA_CITY_SET.has(normCity(destSel.value));
   }
-
   function allowedList() {
     const cicpa = isCICPASelected();
     if (cicpa === true)  return CICPA_TRUCKS;
     if (cicpa === false) return LOCAL_TRUCKS;
-    return UNION_TRUCKS; // before a city is chosen
+    return UNION_TRUCKS;
   }
-
   function optionsHTML(allowed, current) {
     const opts = ['<option value="">— Select Truck Type —</option>'];
     allowed.forEach(t => {
@@ -148,14 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     return opts.join('');
   }
-
   function applyFilterToRow(selectEl) {
     const allowed = allowedList();
     const prev = selectEl.value;
     const keep = allowed.includes(prev);
     selectEl.innerHTML = optionsHTML(allowed, keep ? prev : "");
   }
-
   function applyFilterToAllRows() {
     if (!truckTypeContainer) return;
     truckTypeContainer
@@ -163,16 +171,13 @@ document.addEventListener('DOMContentLoaded', () => {
       .forEach(applyFilterToRow);
   }
 
-  // Add-row button — **fixed syntax (removed stray ')')**
   if (truckTypeContainer && addTruckTypeBtn) {
     addTruckTypeBtn.addEventListener('click', () => {
       truckTypeContainer.appendChild(createTruckRow());
-      // ensure the new row respects current destination's CICPA status
       applyFilterToAllRows();
     });
     // initial row
     truckTypeContainer.appendChild(createTruckRow());
-    // apply initial filter (in case a destination is preselected)
     applyFilterToAllRows();
   }
 
