@@ -80,108 +80,112 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
       const label = radio.closest('label');
       if (label) label.classList.add('selected');
+      // if the first row hasn't been manually set, sync it to main trip
+      const firstRow = document.querySelector('#truckTypeContainer .truck-type-row');
+      if (firstRow) {
+        const tripSel = firstRow.querySelector('select[name="trip_kind[]"]');
+        if (tripSel && tripSel.dataset.userSet !== '1') {
+          tripSel.value = getGlobalTrip();
+        }
+      }
     });
   });
 
-  const truckTypeContainer = document.getElementById('truckTypeContainer');
-  const addTruckTypeBtn    = document.getElementById('add-truck-type');
-  const TRUCK_TYPES        = (window.TRUCK_TYPES || []);
-
-  function currentGlobalTrip() {
-    const r = document.querySelector('input[name="trip_type"]:checked');
-    return r ? r.value : 'one_way';
-    // 'one_way' or 'back_load'
+  function getGlobalTrip() {
+    const checked = document.querySelector('input[name="trip_type"]:checked');
+    return checked ? checked.value : 'one_way';
   }
 
-  function createTruckRow(){
+  // CICPA filtering support (uses arrays injected by template)
+  const CICPA_CITIES = (window.CICPA_CITIES || []).map(s => (s || '').toLowerCase());
+  const LOCAL_TRUCKS = window.LOCAL_TRUCKS || [];
+  const CICPA_TRUCKS = window.CICPA_TRUCKS || [];
+
+  function isCicpaCity(city) {
+    return !!city && CICPA_CITIES.includes((city || '').toLowerCase().trim());
+  }
+
+  function truckListForCity(city) {
+    return isCicpaCity(city) ? CICPA_TRUCKS : LOCAL_TRUCKS;
+  }
+
+  function buildOptions(list, current) {
+    const opts = ['<option value="">— Select Truck Type —</option>']
+      .concat(list.map(t => `<option value="${t}">${t}</option>`))
+      .join('');
+    // if current still allowed, keep it selected
+    const wrap = document.createElement('select');
+    wrap.innerHTML = opts;
+    if (current && list.includes(current)) wrap.value = current;
+    return wrap.innerHTML;
+  }
+
+  const truckTypeContainer = document.getElementById('truckTypeContainer');
+  const addTruckTypeBtn    = document.getElementById('add-truck-type');
+
+  function currentCity() {
+    const d = document.getElementById('destination');
+    return d ? d.value : '';
+  }
+
+  function createTruckRow(defaultTrip) {
     const row = document.createElement('div');
     row.className = 'truck-type-row';
-
-    const typeOptions = ['<option value="">— Select Truck Type —</option>']
-      .concat(TRUCK_TYPES.map(t => `<option value="${t}">${t}</option>`))
-      .join('');
-
-    const defaultTrip = currentGlobalTrip();
+    const allowed = truckListForCity(currentCity());
+    const options = buildOptions(allowed, null);
 
     row.innerHTML = `
       <div class="select-wrapper">
         <label class="inline-label">Type</label>
-        <select name="truck_type[]" required>${typeOptions}</select>
-
-        <label class="inline-label" style="margin-top:6px;">Trip</label>
-        <select name="truck_trip[]" required>
-          <option value="one_way"${defaultTrip === 'one_way' ? ' selected' : ''}>One Way</option>
-          <option value="back_load"${defaultTrip === 'back_load' ? ' selected' : ''}>Back Load</option>
-        </select>
+        <select name="truck_type[]" required>${options}</select>
       </div>
+
       <div class="qty-wrapper">
         <label class="inline-label">QTY</label>
-        <input type="number" name="truck_qty[]" min="1" placeholder="Count" required />
+        <input type="number" name="truck_qty[]" min="1" value="1" required />
       </div>
+
       <button type="button" class="btn-remove" title="Remove Truck Type">Clear</button>
+
+      <div class="select-wrapper" style="grid-column: 1 / span 2;">
+        <label class="inline-label">Trip</label>
+        <select name="trip_kind[]" required>
+          <option value="one_way">One Way</option>
+          <option value="back_load">Back Load</option>
+        </select>
+      </div>
     `;
+
+    const tripSel = row.querySelector('select[name="trip_kind[]"]');
+    tripSel.value = defaultTrip || getGlobalTrip();
+    tripSel.dataset.userSet = '0';
+    tripSel.addEventListener('change', () => { tripSel.dataset.userSet = '1'; });
+
+    // Clear button
     row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
     return row;
   }
 
-  // ---- CICPA filtering (unchanged) ----
-  const destSel = document.getElementById('destination');
-  const CICPA_CITY_SET = new Set(
-    (window.CICPA_CITIES || []).map(s =>
-      (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' ').replace(/[_–—]/g, '-')
-    )
-  );
-  const LOCAL_TRUCKS = Array.isArray(window.LOCAL_TRUCKS) ? window.LOCAL_TRUCKS : [];
-  const CICPA_TRUCKS = Array.isArray(window.CICPA_TRUCKS) ? window.CICPA_TRUCKS : [];
-  const UNION_TRUCKS = Array.isArray(window.TRUCK_TYPES)  ? window.TRUCK_TYPES  : [];
-
-  function normCity(s) {
-    return (s || '').toString().trim().toLowerCase()
-      .replace(/\s+/g, ' ')
-      .replace(/[_–—]/g, '-');
-  }
-  function isCICPASelected() {
-    if (!destSel || !destSel.value) return null;
-    return CICPA_CITY_SET.has(normCity(destSel.value));
-  }
-  function allowedList() {
-    const cicpa = isCICPASelected();
-    if (cicpa === true)  return CICPA_TRUCKS;
-    if (cicpa === false) return LOCAL_TRUCKS;
-    return UNION_TRUCKS;
-  }
-  function optionsHTML(allowed, current) {
-    const opts = ['<option value="">— Select Truck Type —</option>'];
-    allowed.forEach(t => {
-      const sel = (t === current) ? ' selected' : '';
-      opts.push(`<option value="${t}"${sel}>${t}</option>`);
-    });
-    return opts.join('');
-  }
-  function applyFilterToRow(selectEl) {
-    const allowed = allowedList();
-    const prev = selectEl.value;
-    const keep = allowed.includes(prev);
-    selectEl.innerHTML = optionsHTML(allowed, keep ? prev : "");
-  }
-  function applyFilterToAllRows() {
-    if (!truckTypeContainer) return;
-    truckTypeContainer
-      .querySelectorAll('select[name="truck_type[]"]')
-      .forEach(applyFilterToRow);
-  }
-
+  // Add-row button
   if (truckTypeContainer && addTruckTypeBtn) {
     addTruckTypeBtn.addEventListener('click', () => {
-      truckTypeContainer.appendChild(createTruckRow());
-      applyFilterToAllRows();
+      truckTypeContainer.appendChild(createTruckRow(getGlobalTrip()));
     });
-    // initial row
-    truckTypeContainer.appendChild(createTruckRow());
-    applyFilterToAllRows();
+    // initial row defaults to main trip
+    truckTypeContainer.appendChild(createTruckRow(getGlobalTrip()));
   }
 
-  if (destSel) {
-    destSel.addEventListener('change', applyFilterToAllRows);
+  // Re-filter truck type options when destination changes
+  const destEl = document.getElementById('destination');
+  if (destEl) {
+    destEl.addEventListener('change', () => {
+      const allowed = truckListForCity(currentCity());
+      truckTypeContainer.querySelectorAll('.truck-type-row').forEach(row => {
+        const typeSel = row.querySelector('select[name="truck_type[]"]');
+        if (!typeSel) return;
+        const cur = typeSel.value;
+        typeSel.innerHTML = buildOptions(allowed, cur);
+      });
+    });
   }
 });
