@@ -321,7 +321,7 @@ def generate_transport():
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
     # NEW: per-row trip for each truck row; if missing, fall back to main_trip
-    per_row_trips  = request.form.getlist("trip_kind[]") or []
+    per_row_trips = request.form.getlist("truck_trip[]") or []
 
     # CICPA status for destination
     is_cicpa_city = cicpa_required_for(destination)
