@@ -13,3 +13,4 @@ python-dotenv==1.1.1
 requests==2.32.3
 docxtpl>=0.18.2
 gunicorn>=20.1.0
+openpyxl>=3.1.5
