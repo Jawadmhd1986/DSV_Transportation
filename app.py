@@ -397,7 +397,6 @@ def generate_transport():
             add_row(table, desc, unit_rate, amount)
         gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-        set_table_full_width(table)
     else:
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
@@ -407,7 +406,6 @@ def generate_transport():
             add_row(small, desc, unit_rate, amount)
         gt_row = add_row(small, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-        set_table_full_width(small)
 
     buf = io.BytesIO()
     doc.save(buf)
