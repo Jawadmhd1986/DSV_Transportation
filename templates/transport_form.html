@@ -71,8 +71,6 @@
           </select>
         </div>
 
-        <!-- CICPA REMOVED (now auto-applied by destination) -->
-
         <button type="submit" class="btn-generate">Generate</button>
       </form>
     </div>
@@ -96,9 +94,14 @@
     </div>
   </div>
 
-  <!-- Pass truck list to JS; chatbot code loads it -->
+  <!-- Globals for JS -->
   <script>
-    window.TRUCK_TYPES = {{ truck_types|tojson }};
+    // union (shown before a city is chosen)
+    window.TRUCK_TYPES  = {{ truck_types|tojson }};
+    // cicpa metadata + filtered truck lists (from backend)
+    window.CICPA_CITIES = {{ cicpa_cities|tojson }};
+    window.LOCAL_TRUCKS = {{ local_trucks|tojson }};
+    window.CICPA_TRUCKS = {{ cicpa_trucks|tojson }};
   </script>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 </body>
