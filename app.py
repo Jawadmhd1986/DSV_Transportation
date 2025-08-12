@@ -2,40 +2,21 @@ from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.shared import qn
-import docx
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-import io, os, re, csv
+import io, os, re
 
-# Optional XLSX support (only used if file exists AND openpyxl is available)
-OPENPYXL_AVAILABLE = False
-try:
-    import openpyxl  # type: ignore
-    OPENPYXL_AVAILABLE = True
-except Exception:
-    OPENPYXL_AVAILABLE = False
+from openpyxl import load_workbook
+# ⬇️ for setting table width to 100%
+from docx.oxml.shared import OxmlElement, qn
 
 app = Flask(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Constants (business rules)
-# ──────────────────────────────────────────────────────────────────────────────
-ORIGINS = ["Mussafah", "AUH Airport", "Khalifa Port"]
-TRUCK_TYPES_ORDERED = [
-    "3TPickup",
-    "7TPickup",
-    "Flatbed",
-    "HazmatFB",
-    "Curtain Trailer",
-    "Desert Truck",
-]
-
-DEC = Decimal
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
+DEC = Decimal
+
 def q2d(x, default="0"):
     try:
         return DEC(str(x))
@@ -50,129 +31,196 @@ def money(d):
     return f"{d.quantize(DEC('0.01'), rounding=ROUND_HALF_UP):,.2f}"
 
 def norm_city(s: str) -> str:
-    s = (s or "").strip()
-    return re.sub(r"\s+", " ", s)
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = s.replace("_", " ").replace("–", "-").replace("—", "-")
+    return s
+
+# canonical pickups we expose in the UI
+PICKUP_LABELS = {
+    "mussafah": "Mussafah",
+    "auh airport": "AUH Airport",
+    "khalifa port/taweelah": "Khalifa Port/Taweelah",
+}
+# map any sheet variants to these 3
+PICKUP_ALIASES = {
+    "mussafah": "mussafah",
+    "auh airport": "auh airport",
+    "abu dhabi airport": "auh airport",
+    "airport": "auh airport",
+    "khalifa port": "khalifa port/taweelah",
+    "khalifa port/taweelah": "khalifa port/taweelah",
+    "taweelah": "khalifa port/taweelah",
+}
+
+# Only these truck types are valid
+TRUCK_LABELS = {
+    "3tpickup": "3TPickup",
+    "7tpickup": "7TPickup",
+    "flatbed": "Flatbed",
+    "hazmatfb": "HazmatFB",
+    "curtain trailer": "Curtain Trailer",
+    "desert truck": "desert truck",
+}
+TRUCK_ALIASES = {
+    "3t": "3tpickup", "3 ton": "3tpickup", "3 ton pickup": "3tpickup", "3tpickup": "3tpickup",
+    "7t": "7tpickup", "7 ton": "7tpickup", "7 ton pickup": "7tpickup", "7tpickup": "7tpickup",
+    "flat bed": "flatbed", "flat-bed": "flatbed", "flatbed": "flatbed",
+    "hazmat fb": "hazmatfb", "hazmat": "hazmatfb", "dg flatbed": "hazmatfb", "hazmatfb": "hazmatfb",
+    "curtain": "curtain trailer", "curtainside": "curtain trailer", "curtain trailer": "curtain trailer",
+    "desert": "desert truck", "desert-truck": "desert truck", "desert truck": "desert truck",
+}
 
 def norm_truck(s: str) -> str:
-    s = (s or "").strip().lower()
-    aliases = {
-        "3tpickup": "3tpickup",
-        "7tpickup": "7tpickup",
-        "flatbed": "flatbed",
-        "hazmatfb": "hazmatfb",
-        "curtain trailer": "curtain trailer",
-        "desert truck": "desert truck",
-    }
-    return aliases.get(s, s)
-
-def _detect_delimiter(sample: str) -> str:
-    candidates = [",", ";", "\t", "|"]
-    best = ","
-    best_cols = 1
-    first_line = sample.splitlines()[0] if sample else ""
-    for d in candidates:
-        cols = [c for c in first_line.split(d) if c.strip() != ""]
-        if len(cols) > best_cols:
-            best_cols = len(cols)
-            best = d
-    return best
-
-def _read_text(path: str) -> str:
-    with open(path, "r", encoding="utf-8-sig", errors="ignore") as f:
-        return f.read()
+    key = (s or "").strip().lower()
+    if key in TRUCK_LABELS:
+        return key
+    return TRUCK_ALIASES.get(key, key)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Load rates
-# Supports:
-#   CSV with columns: origin, destination, truck_type, rate
-#   XLSX fallback named "transport_rates.csv.xlsx" with same headers
+# Rates loader (matrix with merged pickup headers supported)
+# Sheets: "Local" (non-CICPA) and "CICPA"
+# Row 1 = pickup, Row 2 = truck type, Col A = city
 # ──────────────────────────────────────────────────────────────────────────────
+def load_rates_from_matrix(ws, cicpa=False):
+    """
+    Returns:
+      rates: dict[(origin_norm, dest_norm)][truck_norm] = Decimal(rate)
+      cities: set of display city names
+      cicpa_set: set of dest_norm that require CICPA (if cicpa=True)
+    """
+    rates = {}
+    cities_display = set()
+    cicpa_set = set()
+
+    max_row = ws.max_row
+    max_col = ws.max_column
+    if max_row < 3 or max_col < 3:
+        return rates, cities_display, cicpa_set
+
+    # row 1 => pickup headers (may be merged; forward-fill)
+    # row 2 => truck types
+    pickups = []
+    trucks = []
+    last_pickup = ""
+    for c in range(2, max_col + 1):
+        p_cell = ws.cell(row=1, column=c).value
+        t_cell = ws.cell(row=2, column=c).value
+
+        # forward-fill pickup across merged/blank cells
+        if p_cell is None or str(p_cell).strip() == "":
+            p_raw = last_pickup
+        else:
+            p_raw = str(p_cell).strip()
+            last_pickup = p_raw
+
+        t_raw = str(t_cell or "").strip()
+
+        p_norm = PICKUP_ALIASES.get(p_raw.lower(), p_raw.lower())
+        t_norm = norm_truck(t_raw)
+
+        pickups.append(p_norm)
+        trucks.append(t_norm)
+
+    for r in range(3, max_row + 1):
+        city_disp = ws.cell(row=r, column=1).value
+        if city_disp is None or str(city_disp).strip() == "":
+            continue
+        city_disp = str(city_disp).strip()
+        d_norm = norm_city(city_disp)
+        cities_display.add(city_disp)
+        if cicpa:
+            cicpa_set.add(d_norm)
+
+        for c in range(2, max_col + 1):
+            p_norm = pickups[c - 2]
+            t_norm = trucks[c - 2]
+
+            # keep only our allowed pickups and trucks
+            if p_norm not in PICKUP_ALIASES.values():
+                continue
+            if t_norm not in TRUCK_LABELS:
+                continue
+
+            val = ws.cell(row=r, column=c).value
+            if val is None or str(val).strip() == "":
+                continue
+            try:
+                rate = q2d(val)
+            except Exception:
+                continue
+
+            p_canon = PICKUP_ALIASES.get(p_norm, p_norm)
+            key = (p_canon, d_norm)
+            rates.setdefault(key, {})[t_norm] = rate
+
+    return rates, cities_display, cicpa_set
+
 def load_rates():
     rates = {}
-    csv_path = os.path.join(app.root_path, "transport_rates.csv")
-    xlsx_path = os.path.join(app.root_path, "transport_rates.csv.xlsx")
+    cities = set()
+    cicpa_set_all = set()
 
-    if os.path.exists(csv_path):
-        txt = _read_text(csv_path)
-        delim = _detect_delimiter(txt)
-        reader = csv.DictReader(txt.splitlines(), delimiter=delim)
+    xlsx_paths = [
+        os.path.join(app.root_path, "transport_rates.csv.xlsx"),
+        os.path.join(app.root_path, "transport_rates.xlsx"),
+    ]
+    xlsx_path = next((p for p in xlsx_paths if os.path.exists(p)), None)
+    if not xlsx_path:
+        print("[transport] rates .xlsx not found")
+        return rates
 
-        header_map = {}
-        for k in (reader.fieldnames or []):
-            lk = (k or "").strip().lower()
-            if lk in ("origin", "pickup"): header_map[k] = "origin"
-            elif lk in ("destination", "city", "to"): header_map[k] = "destination"
-            elif lk in ("truck_type", "vehicle type", "truck type"): header_map[k] = "truck_type"
-            elif lk in ("rate", "price"): header_map[k] = "rate"
-            else: header_map[k] = lk
+    wb = load_workbook(xlsx_path, data_only=True)
 
-        for row in reader:
-            r = {header_map.get(k, k): (row.get(k, "") if row.get(k) is not None else "") for k in row}
-            origin = norm_city(r.get("origin") or "")
-            dest   = norm_city(r.get("destination") or "")
-            ttype  = norm_truck(r.get("truck_type") or "")
-            rate_raw = (r.get("rate") or "").strip()
-            if not origin or not dest or not ttype or not rate_raw:
-                continue
-            key = (origin, dest)
-            rates.setdefault(key, {})[ttype] = q2d(rate_raw)
-        print(f"[transport] rates loaded from CSV: {len(rates)} key pairs")
-
-    elif os.path.exists(xlsx_path) and OPENPYXL_AVAILABLE:
-        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
-        ws = wb.active
-        # Find header row
-        headers = {}
-        for j, cell in enumerate(ws[1], start=1):
-            lk = str(cell.value or "").strip().lower()
-            if lk in ("origin", "pickup"): headers[j] = "origin"
-            elif lk in ("destination", "city", "to"): headers[j] = "destination"
-            elif lk in ("truck_type", "vehicle type", "truck type"): headers[j] = "truck_type"
-            elif lk in ("rate", "price"): headers[j] = "rate"
-
-        for i in range(2, ws.max_row + 1):
-            row = { headers.get(j): ws.cell(i, j).value for j in headers if headers.get(j) }
-            origin = norm_city(str(row.get("origin") or ""))
-            dest   = norm_city(str(row.get("destination") or ""))
-            ttype  = norm_truck(str(row.get("truck_type") or ""))
-            rate_raw = str(row.get("rate") or "").strip()
-            if not origin or not dest or not ttype or not rate_raw:
-                continue
-            key = (origin, dest)
-            rates.setdefault(key, {})[ttype] = q2d(rate_raw)
-        print(f"[transport] rates loaded from XLSX: {len(rates)} key pairs")
-
+    # Local sheet
+    local_ws = None
+    for name in wb.sheetnames:
+        if name.strip().lower() == "local":
+            local_ws = wb[name]
+            break
+    if local_ws:
+        r1, c1, s1 = load_rates_from_matrix(local_ws, cicpa=False)
+        for k, v in r1.items:
+            rates.setdefault(k, {}).update(v)
+        cities |= c1
     else:
-        print("[transport] rates file not found. Place 'transport_rates.csv' "
-              "in project root or add 'transport_rates.csv.xlsx' + openpyxl.")
+        print("[transport] 'Local' sheet not found")
 
+    # CICPA sheet
+    cicpa_ws = None
+    for name in wb.sheetnames:
+        if name.strip().lower() == "cicpa":
+            cicpa_ws = wb[name]
+            break
+    if cicpa_ws:
+        r2, c2, s2 = load_rates_from_matrix(cicpa_ws, cicpa=True)
+        for k, v in r2.items():
+            rates.setdefault(k, {}).update(v)
+        cities |= c2
+        cicpa_set_all |= s2
+    else:
+        print("[transport] 'CICPA' sheet not found")
+
+    rates["__cities_display__"] = sorted(cities)
+    rates["__cicpa__"] = cicpa_set_all
+    print(f"[transport] loaded {len([k for k in rates.keys() if isinstance(k, tuple)])} routes, "
+          f"{len(rates.get('__cities_display__', []))} destinations, CICPA cities: {len(cicpa_set_all)}")
     return rates
 
 RATES = load_rates()
 
-def all_destinations_by_origin():
-    by_origin = {o: [] for o in ORIGINS}
-    for (origin, dest) in RATES.keys():
-        if origin in by_origin and dest:
-            by_origin[origin].append(dest)
-    # De-dupe + sort
-    for o in by_origin:
-        seen = {}
-        out = []
-        for d in by_origin[o]:
-            key = d.lower()
-            if key not in seen:
-                seen[key] = True
-                out.append(d)
-        by_origin[o] = sorted(out, key=lambda s: s.lower())
-    return by_origin
+def cicpa_required_for(city: str) -> bool:
+    return norm_city(city) in RATES.get("__cicpa__", set())
 
-DESTS_BY_ORIGIN = all_destinations_by_origin()
-
-def lookup_rate(origin, destination, truck_type):
-    key = (norm_city(origin), norm_city(destination))
-    t = norm_truck(truck_type)
-    return (RATES.get(key) or {}).get(t)
+def lookup_rate(origin_disp, destination_disp, truck_label, cargo_type):
+    o = PICKUP_ALIASES.get((origin_disp or "").strip().lower(), (origin_disp or "").strip().lower())
+    d = norm_city(destination_disp)
+    inv = {v.lower(): k for k, v in TRUCK_LABELS.items()}
+    t = inv.get((truck_label or "").strip().lower(), norm_truck(truck_label))
+    cell = RATES.get((o, d))
+    if not cell:
+        return None
+    return cell.get(t)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Word helpers
@@ -227,112 +275,125 @@ def emphasize_row(row, font_pt=12):
                 run.font.bold = True
                 run.font.size = Pt(font_pt)
 
-def set_table_full_width(doc, table, ratios=(0.55, 0.20, 0.25)):
-    section = doc.sections[0]
-    content_width = section.page_width - section.left_margin - section.right_margin
-    table.autofit = False
-    tbl_pr = table._tbl.tblPr
-    tbl_w = docx.oxml.shared.OxmlElement('w:tblW')
-    tbl_w.set(qn('w:w'), str(int(content_width)))
-    tbl_w.set(qn('w:type'), 'dxa')
-    existing_tblw = getattr(tbl_pr, 'tblW', None)
-    if existing_tblw is not None:
-        tbl_pr.remove(existing_tblw)
-    tbl_pr.append(tbl_w)
-    widths = [int(content_width * r) for r in ratios]
-    for col, w in zip(table.columns, widths):
-        for cell in col.cells:
-            cell.width = w
+# ⬇️ NEW: force a table to use full page width (100%) so it lines up with Detention Rates table
+def set_table_full_width(table):
+    tblPr = table._tbl.tblPr
+    tblW = tblPr.tblW if tblPr is not None and tblPr.tblW is not None else None
+    if tblW is None:
+        if tblPr is None:
+            tblPr = OxmlElement('w:tblPr')
+            table._tbl.insert(0, tblPr)
+        tblW = OxmlElement('w:tblW')
+        tblPr.append(tblW)
+    tblW.set(qn('w:type'), 'pct')
+    tblW.set(qn('w:w'), '5000')  # 5000 = 100% (Word uses 1/50ths of a percent)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Routes
+# UI
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/")
 def home():
-    # Provide JSON-safe data for the template JS to use
-    return render_template(
-        "transport_form.html",
-        truck_types=TRUCK_TYPES_ORDERED,
-        origins=ORIGINS,
-        destinations_by_origin=DESTS_BY_ORIGIN
-    )
+    origins = [PICKUP_LABELS["mussafah"], PICKUP_LABELS["auh airport"], PICKUP_LABELS["khalifa port/taweelah"]]
+    destinations = RATES.get("__cities_display__", [])
+    truck_types = list(TRUCK_LABELS.values())
+    return render_template("transport_form.html",
+                           origins=origins,
+                           destinations=destinations,
+                           truck_types=truck_types)
 
-# Optional small helper (debug)
 @app.route("/rates_debug")
 def rates_debug():
     o = request.args.get("from", "")
     d = request.args.get("to", "")
     t = request.args.get("truck", "")
-    val = lookup_rate(o, d, t)
+    c = (request.args.get("cargo", "general") or "general").lower()
+    val = lookup_rate(o, d, t, c)
     return jsonify({
-        "query": {"from": o, "to": d, "truck": t},
-        "result": (float(val) if val is not None else None)
+        "query": {"from": o, "to": d, "truck": t, "cargo": c},
+        "result": (float(val) if val is not None else None),
+        "cicpa_required": cicpa_required_for(d)
     })
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Generate quotation
+# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
     origin         = (request.form.get("origin") or "").strip()
     destination    = (request.form.get("destination") or "").strip()
     trip_type      = (request.form.get("trip_type") or "one_way").strip()
+    cargo_type     = (request.form.get("cargo_type") or "general").strip().lower()
+
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
-    truck_labels = {
-        "3tpickup": "3 Ton Pickup",
-        "7tpickup": "7 Ton Pickup",
-        "flatbed": "Flatbed",
-        "hazmatfb": "Hazmat Flatbed",
-        "curtain trailer": "Curtain Trailer",
-        "desert truck": "Desert Truck",
-    }
-    trip_label = {"one_way": "One Way", "back_load": "Back Load"}.get(trip_type, "One Way")
-
-    # Back load = two ways as requested
-    multiplier = DEC("2.0") if trip_type == "back_load" else DEC("1.0")
+    way_mult = DEC("2.00") if trip_type == "back_load" else DEC("1.00")
 
     chosen_trucks = []
-    for t, q in zip(truck_types, truck_qty_list):
-        nt = norm_truck(t)
+    for t_label, q in zip(truck_types, truck_qty_list):
         try:
             qty = int(float(q or "0"))
         except Exception:
             qty = 0
-        if nt and qty > 0:
-            chosen_trucks.append((nt, qty))
+        if qty <= 0:
+            continue
+        key = None
+        for k, v in TRUCK_LABELS.items():
+            if v.lower() == (t_label or "").strip().lower():
+                key = k
+                break
+        if key is None:
+            key = norm_truck(t_label)
+        if key in TRUCK_LABELS:
+            chosen_trucks.append((key, qty))
 
     subtotal = DEC("0")
     per_truck_rows = []
 
-    for t, qty in chosen_trucks:
-        label = truck_labels.get(t, t.title())
-        rate = lookup_rate(origin, destination, t)
-        if rate is None:
+    for t_key, qty in chosen_trucks:
+        label = TRUCK_LABELS[t_key]
+        base_rate = lookup_rate(origin, destination, label, cargo_type)
+        if base_rate is None:
+            per_truck_rows.append((f"{label} x {qty} — {origin} → {destination} (No rate found)", "", ""))
             continue
-        total_for_line = rate * multiplier * qty
-        unit_rate_str = f"AED {money(rate * multiplier)}"
-        amount_str    = f"AED {money(total_for_line)}"
-        desc = f"{label} x {qty} — {origin} → {destination}"
-        per_truck_rows.append((desc, unit_rate_str, amount_str))
-        subtotal += total_for_line
 
-    grand_total = subtotal  # (no VAT / env rows per your spec)
+        unit_per_truck = base_rate * way_mult
+        combined = unit_per_truck * qty
+
+        per_truck_rows.append(
+            (f"{label} x {qty} — {origin} → {destination}",
+             f"AED {money(unit_per_truck)}",
+             f"AED {money(combined)}")
+        )
+        subtotal += combined
+
+    grand_total = subtotal
+
+    truck_summary = "; ".join(f"{TRUCK_LABELS[t]} x {q}" for t, q in chosen_trucks) or "N/A"
+    route_str = f"{origin} \u2192 {destination}" if (origin and destination) else "N/A"
+    trip_label = {"one_way": "One Way", "back_load": "Back Load"}.get(trip_type, "One Way")
 
     tpl_path = os.path.join("templates", "TransportQuotation.docx")
     if not os.path.exists(tpl_path):
         return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
 
     doc = Document(tpl_path)
-
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
         "{{FROM}}":       origin or "N/A",
         "{{TO}}":         destination or "N/A",
-        "{{TRUCK_TYPE}}": "; ".join(f"{truck_labels.get(t, t.title())} x {qty}" for t, qty in chosen_trucks) or "N/A",
+        "{{TRUCK_TYPE}}": truck_summary,
+        "{{GENERAL}}":    "General Cargo" if cargo_type == "general" else "",
+        "{{CHEMICAL}}":   "Chemical Load" if cargo_type == "chemical" else "",
         "{{TRIP_TYPE}}":  trip_label,
-        "{{TOTAL_FEE}}":  money(grand_total)
+        "{{CICPA}}":      "Yes" if cicpa_required_for(destination) else "No",
+        "{{ROUTE}}":      route_str,
+        "{{UNIT_RATE}}":  money(subtotal),
+        "{{TOTAL_FEE}}":  money(grand_total),
     }
     replace_everywhere(doc, placeholders)
 
+    # Details table: item lines + GRAND TOTAL (font 12) — and make the table full width
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
@@ -340,9 +401,12 @@ def generate_transport():
             add_row(table, desc, unit_rate, amount)
         gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-        set_table_full_width(doc, table)
+
+        # ⬇️ Ensure the quotation table spans 100% width (aligns with Detention Rates table)
+        set_table_full_width(table)
+
     else:
-        # Fallback if the template changes
+        doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
         hdr[0].text, hdr[1].text, hdr[2].text = "Item", "Unit Rate", "Amount (AED)"
@@ -350,7 +414,7 @@ def generate_transport():
             add_row(small, desc, unit_rate, amount)
         gt_row = add_row(small, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-        set_table_full_width(doc, small)
+        set_table_full_width(small)
 
     buf = io.BytesIO()
     doc.save(buf)
