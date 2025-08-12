@@ -1,93 +1,104 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Transportation Quotation</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-  <style>
-    body { font-family: system-ui, Arial, sans-serif; background:#072552; color:#0b1b2a; }
-    .card { max-width: 540px; margin: 28px auto; background:#fff; border-radius:16px; padding:22px 22px 26px; box-shadow:0 10px 30px rgba(0,0,0,.18);}
-    h1 { color:#072552; font-size:26px; margin:6px 0 16px; }
-    label { display:block; font-size:14px; margin:16px 0 6px; color:#123;}
-    select, input[type="number"] {
-      width:100%; padding:10px 12px; border:1px solid #cfd6e4; border-radius:10px; font-size:14px;
-    }
-    .row{ display:flex; gap:12px; }
-    .row > .col{ flex:1; }
-    .pillbar{ display:flex; gap:10px; margin:10px 0; }
-    .pillbar .pill{ flex:1; text-align:center; padding:10px; border-radius:10px; border:1px solid #cfd6e4; cursor:pointer; }
-    .pill.active{ background:#072552; color:#fff; border-color:#072552; }
-    .truck-row{ display:flex; gap:10px; align-items:center; margin-top:8px; }
-    .qty{ width:110px; }
-    .link{ color:#072552; font-weight:600; cursor:pointer; font-size:13px; }
-    .btn{ width:100%; margin-top:18px; padding:12px; background:#072552; color:#fff; border:none; border-radius:12px; font-size:16px; cursor:pointer; }
-    .muted{ color:#6b7280; font-size:12px; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DSV Transportation Quotation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <div class="card">
-    <h1>Transportation Quotation</h1>
+  <!-- Floating DSV logo -->
+  <img src="{{ url_for('static', filename='dsv_logo.png') }}" alt="DSV Logo" class="dsv-logo" />
 
-    <form id="qform" method="POST" action="/generate_transport">
-      <div class="row">
-        <div class="col">
-          <label for="origin">From</label>
-          <select id="origin" name="origin" required>
-            {% for o in origins %}
-              <option value="{{o}}">{{o}}</option>
-            {% endfor %}
+  <section class="quote-section">
+    <div class="quote-card">
+      <h1>Transportation Quotation</h1>
+
+      <form action="{{ url_for('generate_transport') }}" method="POST">
+        <!-- From / To -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="origin">From</label>
+            <select id="origin" name="origin" required>
+              <option value="">— Select Pickup —</option>
+              {% for o in origins %}
+                <option>{{ o }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="destination">To</label>
+            <select id="destination" name="destination" required>
+              <option value="">— Select City —</option>
+              {% for d in destinations %}
+                <option>{{ d }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- Trip Type (only One Way / Back Load) -->
+        <div class="form-group">
+          <label>Trip Type</label>
+          <div class="trip-options">
+            <label class="selected">
+              <input type="radio" name="trip_type" value="one_way" checked />
+              <span>One Way</span>
+            </label>
+            <label>
+              <input type="radio" name="trip_type" value="back_load" />
+              <span>Back Load</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Truck Types dynamic rows -->
+        <div class="form-group">
+          <label>Truck Types</label>
+          <div id="truckTypeContainer"></div>
+          <button type="button" id="add-truck-type" class="btn-add">+ Add Truck Type</button>
+        </div>
+
+        <!-- Cargo Type -->
+        <div class="form-group">
+          <label for="cargo_type">Cargo Type</label>
+          <select id="cargo_type" name="cargo_type" required>
+            <option value="general">General Cargo</option>
+            <option value="chemical">Chemical Load</option>
+            <option value="container">Container</option>
           </select>
         </div>
-        <div class="col">
-          <label for="destination">To</label>
-          <select id="destination" name="destination" required>
-            <option value="">— Select City —</option>
-            {% for d in destinations %}
-              <option value="{{d}}">{{d}}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
 
-      <label>Trip Type</label>
-      <div class="pillbar" id="tripTypeBar">
-        <div class="pill active" data-val="one_way">One Way</div>
-        <div class="pill" data-val="back_load">Back Load</div>
-      </div>
-      <input type="hidden" name="trip_type" id="trip_type" value="one_way"/>
+        <!-- CICPA REMOVED (now auto-applied by destination) -->
 
-      <label>Truck Types</label>
-      <div id="truckTypeContainer">
-        <div class="truck-row">
-          <select name="truck_type[]">
-            <option value="">— Select Truck Type —</option>
-            {% for t in truck_types %}
-              <option value="{{t}}">{{t}}</option>
-            {% endfor %}
-          </select>
-          <input class="qty" type="number" min="1" step="1" name="truck_qty[]" value="1" />
-          <span class="link clear-row" title="clear">Clear</span>
-        </div>
-      </div>
-      <div class="link" id="add-truck-type" style="margin-top:6px;">+ Add Truck Type</div>
+        <button type="submit" class="btn-generate">Generate</button>
+      </form>
+    </div>
+  </section>
 
-      <label for="cargo_type">Cargo Type</label>
-      <select id="cargo_type" name="cargo_type">
-        <option value="general">General Cargo</option>
-        <option value="chemical">Chemical Load</option>
-      </select>
+  <!-- Chat toggle -->
+  <button class="chat-toggle" aria-label="Chat with DSV">
+    <img src="{{ url_for('static', filename='chat-icon.png') }}" alt="Chat" />
+  </button>
 
-      <button class="btn" type="submit">Generate</button>
-      <div class="muted" style="margin-top:8px;">CICPA cities automatically limit the available truck types.</div>
-    </form>
+  <!-- Chat box -->
+  <div id="chat-box" class="chat-box" aria-live="polite">
+    <div class="chat-header">
+      <span>DSV Assistant</span>
+      <button id="chat-close" title="Close chat">×</button>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-footer">
+      <input type="text" id="chat-input" placeholder="Type a message…" />
+      <button id="chat-send" type="button">Send</button>
+    </div>
   </div>
 
-  <!-- Expose metadata to JS -->
+  <!-- Pass truck list to JS; chatbot code loads it -->
   <script>
-    window.CICPA_CITIES = {{ cicpa_cities|tojson }};
-    window.LOCAL_TRUCKS = {{ local_trucks|tojson }};
-    window.CICPA_TRUCKS = {{ cicpa_trucks|tojson }};
+    window.TRUCK_TYPES = {{ truck_types|tojson }};
   </script>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 </body>
