@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ---------------- Transport UI (trimmed to One Way / Back Load) ----------------
+  // ---------------- Transport UI (One Way / Back Load) ----------------
   const tripRadios = document.querySelectorAll('input[name="trip_type"]');
   tripRadios.forEach(radio => {
     radio.addEventListener('change', () => {
@@ -112,9 +112,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (truckTypeContainer && addTruckTypeBtn) {
     addTruckTypeBtn.addEventListener('click', () => {
-      truckTypeContainer.appendChild(createTruckRow());
+      truckTypeContainer.appendChild(createTruckRow()));
+      // after adding, make sure new select is filtered if a CICPA city is selected
+      setTimeout(applyFilterToAllRows, 0);
     });
     // initial row
     truckTypeContainer.appendChild(createTruckRow());
   }
+
+  // ---------------- CICPA filtering add-on ----------------
+  const destSel      = document.getElementById('destination');
+
+  const CICPA_CITY_SET = new Set(
+    (window.CICPA_CITIES || []).map(s =>
+      (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' ').replace(/[_–—]/g, '-')
+    )
+  );
+  const LOCAL_TRUCKS = Array.isArray(window.LOCAL_TRUCKS) ? window.LOCAL_TRUCKS : [];
+  const CICPA_TRUCKS = Array.isArray(window.CICPA_TRUCKS) ? window.CICPA_TRUCKS : [];
+  const UNION_TRUCKS = Array.isArray(window.TRUCK_TYPES)  ? window.TRUCK_TYPES  : [];
+
+  function normCity(s) {
+    return (s || '').toString().trim().toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[_–—]/g, '-');
+  }
+
+  function isCICPASelected() {
+    if (!destSel || !destSel.value) return null; // no selection yet
+    return CICPA_CITY_SET.has(normCity(destSel.value));
+  }
+
+  function allowedList() {
+    const cicpa = isCICPASelected();
+    if (cicpa === true)  return CICPA_TRUCKS;
+    if (cicpa === false) return LOCAL_TRUCKS;
+    return UNION_TRUCKS; // before a city is chosen
+  }
+
+  function optionsHTML(allowed, current) {
+    const opts = ['<option value="">— Select Truck Type —</option>'];
+    allowed.forEach(t => {
+      const sel = (t === current) ? ' selected' : '';
+      opts.push(`<option value="${t}"${sel}>${t}</option>`);
+    });
+    return opts.join('');
+  }
+
+  function applyFilterToRow(selectEl) {
+    const allowed = allowedList();
+    const prev = selectEl.value;
+    const keep = allowed.includes(prev);
+    selectEl.innerHTML = optionsHTML(allowed, keep ? prev : "");
+  }
+
+  function applyFilterToAllRows() {
+    if (!truckTypeContainer) return;
+    truckTypeContainer
+      .querySelectorAll('select[name="truck_type[]"]')
+      .forEach(applyFilterToRow);
+  }
+
+  if (destSel) {
+    destSel.addEventListener('change', applyFilterToAllRows);
+  }
+
+  // Initial pass (handles preselected destination, if any)
+  applyFilterToAllRows();
 });
