@@ -4,11 +4,8 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-import io, os, re
-
 from openpyxl import load_workbook
-from docx.oxml.shared import OxmlElement
-from docx.oxml.ns import qn
+import io, os, re
 
 app = Flask(__name__)
 
@@ -83,28 +80,36 @@ def norm_truck(s: str) -> str:
 # Row 1 = pickup, Row 2 = truck type, Col A = city
 # ──────────────────────────────────────────────────────────────────────────────
 def load_rates_from_matrix(ws, cicpa=False):
+    """
+    Returns:
+      rates: dict[(origin_norm, dest_norm)][truck_norm] = Decimal(rate)
+      cities: set of display city names
+      cicpa_set: set of dest_norm (only if cicpa=True)
+      trucks_found: set of normalized truck keys found in this sheet
+    """
     rates = {}
     cities_display = set()
     cicpa_set = set()
+    trucks_found = set()
 
     max_row = ws.max_row
     max_col = ws.max_column
     if max_row < 3 or max_col < 3:
-        return rates, cities_display, cicpa_set
+        return rates, cities_display, cicpa_set, trucks_found
 
-    pickups, trucks = [], []
+    # row 1 => pickup headers (may be merged/blank; forward-fill)
+    # row 2 => truck types
+    pickups = []
+    trucks = []
     last_pickup = ""
     for c in range(2, max_col + 1):
         p_cell = ws.cell(row=1, column=c).value
         t_cell = ws.cell(row=2, column=c).value
 
-        if p_cell is None or str(p_cell).strip() == "":
-            p_raw = last_pickup
-        else:
-            p_raw = str(p_cell).strip()
-            last_pickup = p_raw
-
+        p_raw = last_pickup if not p_cell or str(p_cell).strip() == "" else str(p_cell).strip()
+        last_pickup = p_raw
         t_raw = str(t_cell or "").strip()
+
         p_norm = PICKUP_ALIASES.get(p_raw.lower(), p_raw.lower())
         t_norm = norm_truck(t_raw)
 
@@ -113,7 +118,7 @@ def load_rates_from_matrix(ws, cicpa=False):
 
     for r in range(3, max_row + 1):
         city_disp = ws.cell(row=r, column=1).value
-        if city_disp is None or str(city_disp).strip() == "":
+        if not city_disp or str(city_disp).strip() == "":
             continue
         city_disp = str(city_disp).strip()
         d_norm = norm_city(city_disp)
@@ -125,6 +130,7 @@ def load_rates_from_matrix(ws, cicpa=False):
             p_norm = pickups[c - 2]
             t_norm = trucks[c - 2]
 
+            # keep only our allowed pickups and trucks
             if p_norm not in PICKUP_ALIASES.values():
                 continue
             if t_norm not in TRUCK_LABELS:
@@ -133,21 +139,22 @@ def load_rates_from_matrix(ws, cicpa=False):
             val = ws.cell(row=r, column=c).value
             if val is None or str(val).strip() == "":
                 continue
-            try:
-                rate = q2d(val)
-            except Exception:
-                continue
 
+            rate = q2d(val)
             p_canon = PICKUP_ALIASES.get(p_norm, p_norm)
             key = (p_canon, d_norm)
             rates.setdefault(key, {})[t_norm] = rate
+            trucks_found.add(t_norm)
 
-    return rates, cities_display, cicpa_set
+    return rates, cities_display, cicpa_set, trucks_found
+
 
 def load_rates():
     rates = {}
     cities = set()
     cicpa_set_all = set()
+    local_trucks = set()
+    cicpa_trucks = set()
 
     xlsx_paths = [
         os.path.join(app.root_path, "transport_rates.csv.xlsx"),
@@ -156,43 +163,53 @@ def load_rates():
     xlsx_path = next((p for p in xlsx_paths if os.path.exists(p)), None)
     if not xlsx_path:
         print("[transport] rates .xlsx not found")
-        rates["__cities_display__"] = []
-        rates["__cicpa__"] = set()
         return rates
 
     wb = load_workbook(xlsx_path, data_only=True)
 
+    # Local sheet
     local_ws = None
     for name in wb.sheetnames:
         if name.strip().lower() == "local":
             local_ws = wb[name]
             break
     if local_ws:
-        r1, c1, s1 = load_rates_from_matrix(local_ws, cicpa=False)
+        r1, c1, s1, t1 = load_rates_from_matrix(local_ws, cicpa=False)
         for k, v in r1.items():
             rates.setdefault(k, {}).update(v)
         cities |= c1
+        local_trucks |= t1
     else:
         print("[transport] 'Local' sheet not found")
 
+    # CICPA sheet
     cicpa_ws = None
     for name in wb.sheetnames:
         if name.strip().lower() == "cicpa":
             cicpa_ws = wb[name]
             break
     if cicpa_ws:
-        r2, c2, s2 = load_rates_from_matrix(cicpa_ws, cicpa=True)
+        r2, c2, s2, t2 = load_rates_from_matrix(cicpa_ws, cicpa=True)
         for k, v in r2.items():
             rates.setdefault(k, {}).update(v)
         cities |= c2
         cicpa_set_all |= s2
+        cicpa_trucks |= t2
     else:
         print("[transport] 'CICPA' sheet not found")
 
+    # metadata used by template / JS
     rates["__cities_display__"] = sorted(cities)
     rates["__cicpa__"] = cicpa_set_all
-    print(f"[transport] loaded {len([k for k in rates.keys() if isinstance(k, tuple)])} routes, "
-          f"{len(rates.get('__cities_display__', []))} destinations, CICPA cities: {len(cicpa_set_all)}")
+    rates["__local_trucks__"] = sorted(TRUCK_LABELS[t] for t in local_trucks if t in TRUCK_LABELS)
+    rates["__cicpa_trucks__"] = sorted(TRUCK_LABELS[t] for t in cicpa_trucks if t in TRUCK_LABELS)
+
+    print(
+        f"[transport] loaded {len([k for k in rates.keys() if isinstance(k, tuple)])} routes, "
+        f"{len(rates.get('__cities_display__', []))} destinations, "
+        f"CICPA cities: {len(cicpa_set_all)}, "
+        f"local trucks: {len(rates['__local_trucks__'])}, CICPA trucks: {len(rates['__cicpa_trucks__'])}"
+    )
     return rates
 
 RATES = load_rates()
@@ -263,39 +280,24 @@ def emphasize_row(row, font_pt=12):
                 run.font.bold = True
                 run.font.size = Pt(font_pt)
 
-# SAFE version that doesn’t assume tblPr.tblW exists
-def set_table_full_width(table):
-    tbl = table._tbl
-    tblPr = tbl.tblPr
-    if tblPr is None:
-        tblPr = OxmlElement('w:tblPr')
-        tbl.insert(0, tblPr)
-
-    # find existing <w:tblW>
-    tblW = None
-    for child in tblPr.iterchildren():
-        if child.tag == qn('w:tblW'):
-            tblW = child
-            break
-    if tblW is None:
-        tblW = OxmlElement('w:tblW')
-        tblPr.append(tblW)
-
-    tblW.set(qn('w:type'), 'pct')   # width is a percentage
-    tblW.set(qn('w:w'), '5000')     # 5000 = 100% (1/50th percent unit)
-
 # ──────────────────────────────────────────────────────────────────────────────
-# UI
+# Routes
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/")
 def home():
     origins = [PICKUP_LABELS["mussafah"], PICKUP_LABELS["auh airport"], PICKUP_LABELS["khalifa port/taweelah"]]
     destinations = RATES.get("__cities_display__", [])
-    truck_types = list(TRUCK_LABELS.values())
-    return render_template("transport_form.html",
-                           origins=origins,
-                           destinations=destinations,
-                           truck_types=truck_types)
+    # default list (union) so something shows before a city is chosen
+    default_trucks = sorted(set(RATES.get("__local_trucks__") or []) | set(RATES.get("__cicpa_trucks__") or []))
+    return render_template(
+        "transport_form.html",
+        origins=origins,
+        destinations=destinations,
+        truck_types=default_trucks,
+        cicpa_cities=list(RATES.get("__cicpa__", set())),
+        local_trucks=RATES.get("__local_trucks__", []),
+        cicpa_trucks=RATES.get("__cicpa_trucks__", []),
+    )
 
 @app.route("/rates_debug")
 def rates_debug():
@@ -310,12 +312,8 @@ def rates_debug():
         "cicpa_required": cicpa_required_for(d)
     })
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Generate quotation
-# ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
-    # ---- Read form fields ----
     origin         = (request.form.get("origin") or "").strip()
     destination    = (request.form.get("destination") or "").strip()
     trip_type      = (request.form.get("trip_type") or "one_way").strip()
@@ -324,10 +322,14 @@ def generate_transport():
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
-    # One Way = x1, Back Load = x2
     way_mult = DEC("2.00") if trip_type == "back_load" else DEC("1.00")
 
-    # ---- Normalize selected trucks to our fixed set ----
+    # CICPA status for destination
+    is_cicpa_city = cicpa_required_for(destination)
+    cicpa_flag = " (CICPA)" if is_cicpa_city else " (Non-CICPA)"
+    allowed_display_trucks = set(RATES.get("__cicpa_trucks__") if is_cicpa_city else RATES.get("__local_trucks__"))
+
+    # normalize selected trucks
     chosen_trucks = []
     for t_label, q in zip(truck_types, truck_qty_list):
         try:
@@ -336,36 +338,43 @@ def generate_transport():
             qty = 0
         if qty <= 0:
             continue
-
-        # map display label -> internal key
-        key = None
+        norm_key = None
         for k, v in TRUCK_LABELS.items():
             if v.lower() == (t_label or "").strip().lower():
-                key = k
+                norm_key = k
                 break
-        if key is None:
-            key = norm_truck(t_label)
+        norm_key = norm_key or norm_truck(t_label)
+        if norm_key in TRUCK_LABELS:
+            chosen_trucks.append((norm_key, qty))
 
-        if key in TRUCK_LABELS:
-            chosen_trucks.append((key, qty))
-
-    # ---- Price lines ----
     subtotal = DEC("0")
     per_truck_rows = []
 
     for t_key, qty in chosen_trucks:
         label = TRUCK_LABELS[t_key]
+
+        if label not in allowed_display_trucks:
+            per_truck_rows.append((
+                f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (Not available for this selection)",
+                "",
+                ""
+            ))
+            continue
+
         base_rate = lookup_rate(origin, destination, label, cargo_type)
         if base_rate is None:
-            # show that this combo has no price
-            per_truck_rows.append((f"{label} x {qty} — {origin} → {destination} (No rate found)", "", ""))
+            per_truck_rows.append((
+                f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (No rate found)",
+                "",
+                ""
+            ))
             continue
 
         unit_per_truck = base_rate * way_mult
         combined = unit_per_truck * qty
 
         per_truck_rows.append(
-            (f"{label} x {qty} — {origin} → {destination}",
+            (f"{label} x {qty} — {origin} → {destination}{cicpa_flag}",
              f"AED {money(unit_per_truck)}",
              f"AED {money(combined)}")
         )
@@ -373,34 +382,31 @@ def generate_transport():
 
     grand_total = subtotal
 
-    # ---- Header placeholders ----
     truck_summary = "; ".join(f"{TRUCK_LABELS[t]} x {q}" for t, q in chosen_trucks) or "N/A"
-    route_str = f"{origin} \u2192 {destination}" if (origin and destination) else "N/A"
+    route_str = f"{origin} \u2192 {destination}{cicpa_flag}" if (origin and destination) else "N/A"
     trip_label = {"one_way": "One Way", "back_load": "Back Load"}.get(trip_type, "One Way")
 
-    # Use absolute path so Render can always find the DOCX
-    tpl_path = os.path.join(app.root_path, "templates", "TransportQuotation.docx")
-    if not os.path.isfile(tpl_path):
-        app.logger.error(f"TransportQuotation.docx not found at {tpl_path}")
+    tpl_path = os.path.join("templates", "TransportQuotation.docx")
+    if not os.path.exists(tpl_path):
         return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
 
     doc = Document(tpl_path)
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
         "{{FROM}}":       origin or "N/A",
-        "{{TO}}":         destination or "N/A",
+        "{{TO}}":         (destination or "N/A") + cicpa_flag,
         "{{TRUCK_TYPE}}": truck_summary,
         "{{GENERAL}}":    "General Cargo" if cargo_type == "general" else "",
         "{{CHEMICAL}}":   "Chemical Load" if cargo_type == "chemical" else "",
         "{{TRIP_TYPE}}":  trip_label,
-        "{{CICPA}}":      "Yes" if cicpa_required_for(destination) else "No",
+        "{{CICPA}}":      "Yes" if is_cicpa_city else "No",
         "{{ROUTE}}":      route_str,
         "{{UNIT_RATE}}":  money(subtotal),
         "{{TOTAL_FEE}}":  money(grand_total),
     }
     replace_everywhere(doc, placeholders)
 
-    # ---- Rebuild Quotation Details table: only item lines + GRAND TOTAL (font 12) ----
+    # Details table: item lines + GRAND TOTAL (font 12)
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
@@ -408,10 +414,7 @@ def generate_transport():
             add_row(table, desc, unit_rate, amount)
         gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-        # keep width consistent with detention table
-        set_table_full_width(table)
     else:
-        # Fallback if template changes
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
@@ -420,9 +423,7 @@ def generate_transport():
             add_row(small, desc, unit_rate, amount)
         gt_row = add_row(small, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-        set_table_full_width(small)
 
-    # ---- Stream DOCX ----
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
