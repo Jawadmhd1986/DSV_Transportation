@@ -1,78 +1,15 @@
-// ───────────────────────────────────────────────────────────────────
-// Viewport fix (mobile safe; harmless on desktop too)
-// ───────────────────────────────────────────────────────────────────
-function setVH() {
+// ---- Viewport fix (unchanged) ----
+window.addEventListener('load', () => {
   const vh = window.innerHeight * 0.01;
   document.documentElement.style.setProperty('--vh', `${vh}px`);
-}
-window.addEventListener('load', setVH);
-window.addEventListener('resize', setVH);
+});
+window.addEventListener('resize', () => {
+  const vh = window.innerHeight * 0.01;
+  document.documentElement.style.setProperty('--vh', `${vh}px`);
+});
 
-// ───────────────────────────────────────────────────────────────────
-// Helpers
-// ───────────────────────────────────────────────────────────────────
-function normCity(s) {
-  return (s || '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[_–—]/g, '-');
-}
-
-// Globals from template
-const ALL_TRUCKS      = (window.TRUCK_TYPES || []);
-const CICPA_CITY_SET  = new Set((window.CICPA_CITIES || []).map(normCity));
-const CICPA_ALLOWED   = (window.CICPA_ALLOWED || ["3TPickup","7TPickup","Flatbed","HazmatFB"]);
-
-// Figure out if current destination is CICPA
-function isDestinationCICPA() {
-  const destSel = document.getElementById('destination');
-  const val = destSel ? destSel.value : '';
-  return CICPA_CITY_SET.has(normCity(val));
-}
-
-// Build <option> list for a given allowed set
-function optionsHTML(allowedList, currentValue) {
-  const opts = ['<option value="">— Select Truck Type —</option>'];
-  allowedList.forEach(t => {
-    const sel = (t === currentValue) ? ' selected' : '';
-    opts.push(`<option value="${t}"${sel}>${t}</option>`);
-  });
-  return opts.join('');
-}
-
-// Return trucks allowed right now (based on selected destination)
-function currentAllowedTrucks() {
-  if (isDestinationCICPA()) {
-    // keep intersection in case server sends a subset
-    const allowed = new Set(CICPA_ALLOWED);
-    return ALL_TRUCKS.filter(t => allowed.has(t));
-  }
-  return ALL_TRUCKS.slice();
-}
-
-// Refresh every truck row select when destination changes
-function refreshTruckRowsForDestination() {
-  const allowed = currentAllowedTrucks();
-  document
-    .querySelectorAll('#truckTypeContainer select[name="truck_type[]"]')
-    .forEach(sel => {
-      const previous = sel.value;
-      sel.innerHTML = optionsHTML(allowed, allowed.includes(previous) ? previous : "");
-    });
-
-  // Optional: show a tiny hint near the destination if it’s CICPA
-  const badge = document.getElementById('cicpa-badge');
-  if (badge) {
-    badge.textContent = isDestinationCICPA() ? '(CICPA)' : '(Non-CICPA)';
-  }
-}
-
-// ───────────────────────────────────────────────────────────────────
-// Chatbot (unchanged behaviour)
-// ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // ---------------- Chatbot (UNCHANGED UX & API) ----------------
   const chatBox    = document.getElementById('chat-box');
   const chatToggle = document.querySelector('.chat-toggle');
   const chatClose  = document.getElementById('chat-close');
@@ -136,9 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // Transport UI (One Way / Back Load + CICPA filtering)
-  // ─────────────────────────────────────────────────────────────────
+  // ---------------- Transport UI (trimmed to One Way / Back Load) ----------------
   const tripRadios = document.querySelectorAll('input[name="trip_type"]');
   tripRadios.forEach(radio => {
     radio.addEventListener('change', () => {
@@ -148,21 +83,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Truck rows (use server-provided whitelist)
   const truckTypeContainer = document.getElementById('truckTypeContainer');
   const addTruckTypeBtn    = document.getElementById('add-truck-type');
-  const destinationSel     = document.getElementById('destination');
+  const TRUCK_TYPES        = (window.TRUCK_TYPES || []);
 
-  function createTruckRow() {
+  function createTruckRow(){
     const row = document.createElement('div');
     row.className = 'truck-type-row';
+    const options = ['<option value="">— Select Truck Type —</option>']
+      .concat(TRUCK_TYPES.map(t => `<option value="${t}">${t}</option>`))
+      .join('');
 
-    const allowed = currentAllowedTrucks();
     row.innerHTML = `
       <div class="select-wrapper">
         <label class="inline-label">Type</label>
-        <select name="truck_type[]" required>
-          ${optionsHTML(allowed, "")}
-        </select>
+        <select name="truck_type[]" required>${options}</select>
       </div>
       <div class="qty-wrapper">
         <label class="inline-label">QTY</label>
@@ -181,10 +117,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // initial row
     truckTypeContainer.appendChild(createTruckRow());
   }
-
-  if (destinationSel) {
-    destinationSel.addEventListener('change', refreshTruckRowsForDestination);
-  }
-  // Initial sync in case template pre-selects a destination
-  refreshTruckRowsForDestination();
 });
