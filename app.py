@@ -315,6 +315,7 @@ def rates_debug():
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
+    # ---- Read form fields ----
     origin         = (request.form.get("origin") or "").strip()
     destination    = (request.form.get("destination") or "").strip()
     trip_type      = (request.form.get("trip_type") or "one_way").strip()
@@ -323,8 +324,10 @@ def generate_transport():
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
 
+    # One Way = x1, Back Load = x2
     way_mult = DEC("2.00") if trip_type == "back_load" else DEC("1.00")
 
+    # ---- Normalize selected trucks to our fixed set ----
     chosen_trucks = []
     for t_label, q in zip(truck_types, truck_qty_list):
         try:
@@ -333,6 +336,8 @@ def generate_transport():
             qty = 0
         if qty <= 0:
             continue
+
+        # map display label -> internal key
         key = None
         for k, v in TRUCK_LABELS.items():
             if v.lower() == (t_label or "").strip().lower():
@@ -340,9 +345,11 @@ def generate_transport():
                 break
         if key is None:
             key = norm_truck(t_label)
+
         if key in TRUCK_LABELS:
             chosen_trucks.append((key, qty))
 
+    # ---- Price lines ----
     subtotal = DEC("0")
     per_truck_rows = []
 
@@ -350,6 +357,7 @@ def generate_transport():
         label = TRUCK_LABELS[t_key]
         base_rate = lookup_rate(origin, destination, label, cargo_type)
         if base_rate is None:
+            # show that this combo has no price
             per_truck_rows.append((f"{label} x {qty} — {origin} → {destination} (No rate found)", "", ""))
             continue
 
@@ -365,12 +373,15 @@ def generate_transport():
 
     grand_total = subtotal
 
+    # ---- Header placeholders ----
     truck_summary = "; ".join(f"{TRUCK_LABELS[t]} x {q}" for t, q in chosen_trucks) or "N/A"
     route_str = f"{origin} \u2192 {destination}" if (origin and destination) else "N/A"
     trip_label = {"one_way": "One Way", "back_load": "Back Load"}.get(trip_type, "One Way")
 
-    tpl_path = os.path.join("templates", "TransportQuotation.docx")
-    if not os.path.exists(tpl_path):
+    # Use absolute path so Render can always find the DOCX
+    tpl_path = os.path.join(app.root_path, "templates", "TransportQuotation.docx")
+    if not os.path.isfile(tpl_path):
+        app.logger.error(f"TransportQuotation.docx not found at {tpl_path}")
         return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
 
     doc = Document(tpl_path)
@@ -389,7 +400,7 @@ def generate_transport():
     }
     replace_everywhere(doc, placeholders)
 
-    # Details table
+    # ---- Rebuild Quotation Details table: only item lines + GRAND TOTAL (font 12) ----
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
@@ -397,7 +408,10 @@ def generate_transport():
             add_row(table, desc, unit_rate, amount)
         gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
+        # keep width consistent with detention table
+        set_table_full_width(table)
     else:
+        # Fallback if template changes
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
         hdr = small.rows[0].cells
@@ -406,7 +420,9 @@ def generate_transport():
             add_row(small, desc, unit_rate, amount)
         gt_row = add_row(small, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
+        set_table_full_width(small)
 
+    # ---- Stream DOCX ----
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)
