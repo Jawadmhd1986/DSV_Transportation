@@ -7,7 +7,6 @@ from decimal import Decimal, ROUND_HALF_UP
 import io, os, re
 
 from openpyxl import load_workbook
-# for setting table width to 100%
 from docx.oxml.shared import OxmlElement
 from docx.oxml.ns import qn
 
@@ -84,12 +83,6 @@ def norm_truck(s: str) -> str:
 # Row 1 = pickup, Row 2 = truck type, Col A = city
 # ──────────────────────────────────────────────────────────────────────────────
 def load_rates_from_matrix(ws, cicpa=False):
-    """
-    Returns:
-      rates: dict[(origin_norm, dest_norm)][truck_norm] = Decimal(rate)
-      cities: set of display city names
-      cicpa_set: set of dest_norm that require CICPA (if cicpa=True)
-    """
     rates = {}
     cities_display = set()
     cicpa_set = set()
@@ -99,16 +92,12 @@ def load_rates_from_matrix(ws, cicpa=False):
     if max_row < 3 or max_col < 3:
         return rates, cities_display, cicpa_set
 
-    # row 1 => pickup headers (may be merged; forward-fill)
-    # row 2 => truck types
-    pickups = []
-    trucks = []
+    pickups, trucks = [], []
     last_pickup = ""
     for c in range(2, max_col + 1):
         p_cell = ws.cell(row=1, column=c).value
         t_cell = ws.cell(row=2, column=c).value
 
-        # forward-fill pickup across merged/blank cells
         if p_cell is None or str(p_cell).strip() == "":
             p_raw = last_pickup
         else:
@@ -116,7 +105,6 @@ def load_rates_from_matrix(ws, cicpa=False):
             last_pickup = p_raw
 
         t_raw = str(t_cell or "").strip()
-
         p_norm = PICKUP_ALIASES.get(p_raw.lower(), p_raw.lower())
         t_norm = norm_truck(t_raw)
 
@@ -137,7 +125,6 @@ def load_rates_from_matrix(ws, cicpa=False):
             p_norm = pickups[c - 2]
             t_norm = trucks[c - 2]
 
-            # keep only our allowed pickups and trucks
             if p_norm not in PICKUP_ALIASES.values():
                 continue
             if t_norm not in TRUCK_LABELS:
@@ -169,14 +156,12 @@ def load_rates():
     xlsx_path = next((p for p in xlsx_paths if os.path.exists(p)), None)
     if not xlsx_path:
         print("[transport] rates .xlsx not found")
-        # still set keys so template has safe defaults
         rates["__cities_display__"] = []
         rates["__cicpa__"] = set()
         return rates
 
     wb = load_workbook(xlsx_path, data_only=True)
 
-    # Local sheet
     local_ws = None
     for name in wb.sheetnames:
         if name.strip().lower() == "local":
@@ -184,13 +169,12 @@ def load_rates():
             break
     if local_ws:
         r1, c1, s1 = load_rates_from_matrix(local_ws, cicpa=False)
-        for k, v in r1.items():   # ← FIXED: .items()
+        for k, v in r1.items():
             rates.setdefault(k, {}).update(v)
         cities |= c1
     else:
         print("[transport] 'Local' sheet not found")
 
-    # CICPA sheet
     cicpa_ws = None
     for name in wb.sheetnames:
         if name.strip().lower() == "cicpa":
@@ -198,7 +182,7 @@ def load_rates():
             break
     if cicpa_ws:
         r2, c2, s2 = load_rates_from_matrix(cicpa_ws, cicpa=True)
-        for k, v in r2.items():   # ← FIXED: .items()
+        for k, v in r2.items():
             rates.setdefault(k, {}).update(v)
         cities |= c2
         cicpa_set_all |= s2
@@ -279,18 +263,26 @@ def emphasize_row(row, font_pt=12):
                 run.font.bold = True
                 run.font.size = Pt(font_pt)
 
-# Ensure a table spans 100% width so it lines up with Detention Rates table
+# SAFE version that doesn’t assume tblPr.tblW exists
 def set_table_full_width(table):
-    tblPr = table._tbl.tblPr
-    tblW = tblPr.tblW if tblPr is not None and tblPr.tblW is not None else None
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement('w:tblPr')
+        tbl.insert(0, tblPr)
+
+    # find existing <w:tblW>
+    tblW = None
+    for child in tblPr.iterchildren():
+        if child.tag == qn('w:tblW'):
+            tblW = child
+            break
     if tblW is None:
-        if tblPr is None:
-            tblPr = OxmlElement('w:tblPr')
-            table._tbl.insert(0, tblPr)
         tblW = OxmlElement('w:tblW')
         tblPr.append(tblW)
-    tblW.set(qn('w:type'), 'pct')
-    tblW.set(qn('w:w'), '5000')  # 5000 = 100% (Word uses 1/50ths of a percent)
+
+    tblW.set(qn('w:type'), 'pct')   # width is a percentage
+    tblW.set(qn('w:w'), '5000')     # 5000 = 100% (1/50th percent unit)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # UI
@@ -397,7 +389,7 @@ def generate_transport():
     }
     replace_everywhere(doc, placeholders)
 
-    # Details table: item lines + GRAND TOTAL (font 12) — and make the table full width
+    # Details table
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
