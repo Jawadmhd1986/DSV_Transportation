@@ -80,10 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
       const label = radio.closest('label');
       if (label) label.classList.add('selected');
-      // if the first row hasn't been manually set, sync it to main trip
+
+      // If the first row hasn't been manually set, sync it to main trip
       const firstRow = document.querySelector('#truckTypeContainer .truck-type-row');
       if (firstRow) {
-        const tripSel = firstRow.querySelector('select[name="trip_kind[]"]');
+        const tripSel = firstRow.querySelector('select[name="truck_trip[]"]');
         if (tripSel && tripSel.dataset.userSet !== '1') {
           tripSel.value = getGlobalTrip();
         }
@@ -100,23 +101,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const CICPA_CITIES = (window.CICPA_CITIES || []).map(s => (s || '').toLowerCase());
   const LOCAL_TRUCKS = window.LOCAL_TRUCKS || [];
   const CICPA_TRUCKS = window.CICPA_TRUCKS || [];
+  // fallback if arrays weren’t injected
+  const FALLBACK_TRUCKS = window.TRUCK_TYPES || [];
 
   function isCicpaCity(city) {
     return !!city && CICPA_CITIES.includes((city || '').toLowerCase().trim());
   }
 
   function truckListForCity(city) {
-    return isCicpaCity(city) ? CICPA_TRUCKS : LOCAL_TRUCKS;
+    if (CICPA_CITIES.length || LOCAL_TRUCKS.length || CICPA_TRUCKS.length) {
+      return isCicpaCity(city) ? (CICPA_TRUCKS || []) : (LOCAL_TRUCKS || []);
+    }
+    return FALLBACK_TRUCKS; // minimal fallback
   }
 
   function buildOptions(list, current) {
     const opts = ['<option value="">— Select Truck Type —</option>']
-      .concat(list.map(t => `<option value="${t}">${t}</option>`))
+      .concat((list || []).map(t => `<option value="${t}">${t}</option>`))
       .join('');
     // if current still allowed, keep it selected
     const wrap = document.createElement('select');
     wrap.innerHTML = opts;
-    if (current && list.includes(current)) wrap.value = current;
+    if (current && list && list.includes(current)) wrap.value = current;
     return wrap.innerHTML;
   }
 
@@ -149,15 +155,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       <div class="select-wrapper" style="grid-column: 1 / span 2;">
         <label class="inline-label">Trip</label>
-        <select name="trip_kind[]" required>
+        <select name="truck_trip[]" required>
           <option value="one_way">One Way</option>
           <option value="back_load">Back Load</option>
         </select>
       </div>
     `;
 
-    const tripSel = row.querySelector('select[name="trip_kind[]"]');
-    tripSel.value = defaultTrip || getGlobalTrip();
+    const tripSel = row.querySelector('select[name="truck_trip[]"]');
+    tripSel.value = defaultTrip || getGlobalTrip(); // default to main trip
     tripSel.dataset.userSet = '0';
     tripSel.addEventListener('change', () => { tripSel.dataset.userSet = '1'; });
 
