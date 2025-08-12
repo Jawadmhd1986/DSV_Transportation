@@ -7,8 +7,9 @@ from decimal import Decimal, ROUND_HALF_UP
 import io, os, re
 
 from openpyxl import load_workbook
-# ⬇️ for setting table width to 100%
-from docx.oxml.shared import OxmlElement, qn
+# for setting table width to 100%
+from docx.oxml.shared import OxmlElement
+from docx.oxml.ns import qn
 
 app = Flask(__name__)
 
@@ -168,6 +169,9 @@ def load_rates():
     xlsx_path = next((p for p in xlsx_paths if os.path.exists(p)), None)
     if not xlsx_path:
         print("[transport] rates .xlsx not found")
+        # still set keys so template has safe defaults
+        rates["__cities_display__"] = []
+        rates["__cicpa__"] = set()
         return rates
 
     wb = load_workbook(xlsx_path, data_only=True)
@@ -180,7 +184,7 @@ def load_rates():
             break
     if local_ws:
         r1, c1, s1 = load_rates_from_matrix(local_ws, cicpa=False)
-        for k, v in r1.items:
+        for k, v in r1.items():   # ← FIXED: .items()
             rates.setdefault(k, {}).update(v)
         cities |= c1
     else:
@@ -194,7 +198,7 @@ def load_rates():
             break
     if cicpa_ws:
         r2, c2, s2 = load_rates_from_matrix(cicpa_ws, cicpa=True)
-        for k, v in r2.items():
+        for k, v in r2.items():   # ← FIXED: .items()
             rates.setdefault(k, {}).update(v)
         cities |= c2
         cicpa_set_all |= s2
@@ -275,7 +279,7 @@ def emphasize_row(row, font_pt=12):
                 run.font.bold = True
                 run.font.size = Pt(font_pt)
 
-# ⬇️ NEW: force a table to use full page width (100%) so it lines up with Detention Rates table
+# Ensure a table spans 100% width so it lines up with Detention Rates table
 def set_table_full_width(table):
     tblPr = table._tbl.tblPr
     tblW = tblPr.tblW if tblPr is not None and tblPr.tblW is not None else None
@@ -401,10 +405,7 @@ def generate_transport():
             add_row(table, desc, unit_rate, amount)
         gt_row = add_row(table, "GRAND TOTAL", "", f"AED {money(grand_total)}")
         emphasize_row(gt_row, font_pt=12)
-
-        # ⬇️ Ensure the quotation table spans 100% width (aligns with Detention Rates table)
         set_table_full_width(table)
-
     else:
         doc.add_paragraph("Quotation Details (Auto)")
         small = doc.add_table(rows=1, cols=3)
