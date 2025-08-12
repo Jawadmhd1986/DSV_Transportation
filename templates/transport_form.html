@@ -21,94 +21,37 @@
           <div class="form-group">
             <label for="origin">From</label>
             <select id="origin" name="origin" required>
-              <option value="">— Select City —</option>
-              <option>Mussafah</option>
-              <option>Alain Industrial Area</option>
-              <option>Al Ain City Limits</option>
-              <option>AUH Airport</option>
-              <option>Abu Dhabi City Limits</option>
-              <option>Mafraq</option>
-              <option>ICAD 2/ICAD3</option>
-              <option>ICAD 4</option>
-              <option>Al Wathba</option>
-              <option>Mina Zayed/Free Port</option>
-              <option>Tawazun Industrial Park</option>
-              <option>KIZAD</option>
-              <option>Khalifa Port/Taweelah</option>
-              <option>Sweihan</option>
-              <option>Yas Island</option>
-              <option>Ghantoot</option>
-              <option>Jebel Ali</option>
-              <option>Dubai-Al Qusais</option>
-              <option>Dubai-Al Quoz</option>
-              <option>Dubai-DIP/DIC</option>
-              <option>Dubai-DMC</option>
-              <option>Dubai-City Limits</option>
-              <option>Sharjah</option>
-              <option>Sharjah-Hamriyah</option>
-              <option>Ajman</option>
-              <option>Umm Al Quwain</option>
-              <option>Fujairah</option>
-              <option>Ras Al Khaimah-Al Ghail</option>
-              <option>Ras Al Khaimah-Hamra</option>
-              <option>Al Markaz Area</option>
-              <option>Baniyas</option>
+              <option value="">— Select Pickup —</option>
+              {% for o in origins %}
+                <option>{{ o }}</option>
+              {% endfor %}
             </select>
           </div>
+
           <div class="form-group">
             <label for="destination">To</label>
             <select id="destination" name="destination" required>
               <option value="">— Select City —</option>
-              <option>Mussafah</option>
-              <option>Alain Industrial Area</option>
-              <option>Al Ain City Limits</option>
-              <option>AUH Airport</option>
-              <option>Abu Dhabi City Limits</option>
-              <option>Mafraq</option>
-              <option>ICAD 2/ICAD3</option>
-              <option>ICAD 4</option>
-              <option>Al Wathba</option>
-              <option>Mina Zayed/Free Port</option>
-              <option>Tawazun Industrial Park</option>
-              <option>KIZAD</option>
-              <option>Khalifa Port/Taweelah</option>
-              <option>Sweihan</option>
-              <option>Yas Island</option>
-              <option>Ghantoot</option>
-              <option>Jebel Ali</option>
-              <option>Dubai-Al Qusais</option>
-              <option>Dubai-Al Quoz</option>
-              <option>Dubai-DIP/DIC</option>
-              <option>Dubai-DMC</option>
-              <option>Dubai-City Limits</option>
-              <option>Sharjah</option>
-              <option>Sharjah-Hamriyah</option>
-              <option>Ajman</option>
-              <option>Umm Al Quwain</option>
-              <option>Fujairah</option>
-              <option>Ras Al Khaimah-Al Ghail</option>
-              <option>Ras Al Khaimah-Hamra</option>
-              <option>Al Markaz Area</option>
-              <option>Baniyas</option>
+              {% for d in destinations %}
+                <option>{{ d }}</option>
+              {% endfor %}
             </select>
           </div>
         </div>
 
-        <!-- Trip Type -->
+        <!-- Trip Type (only One Way / Back Load) -->
         <div class="form-group">
           <label>Trip Type</label>
           <div class="trip-options">
-            <label><input type="radio" name="trip_type" value="one_way" required /><span>One Way</span></label>
-            <label><input type="radio" name="trip_type" value="back_load" /><span>Back Load</span></label>
-            <label><input type="radio" name="trip_type" value="multi" /><span>Multiple</span></label>
+            <label class="selected">
+              <input type="radio" name="trip_type" value="one_way" checked />
+              <span>One Way</span>
+            </label>
+            <label>
+              <input type="radio" name="trip_type" value="back_load" />
+              <span>Back Load</span>
+            </label>
           </div>
-        </div>
-
-        <!-- Additional Cities (shown only for Multiple) -->
-        <div id="stops-container" class="form-group" style="display:none;">
-          <label>Additional Cities</label>
-          <div id="stops-list"></div>
-          <button type="button" id="add-stop" class="btn-add">+ Add City</button>
         </div>
 
         <!-- Truck Types dynamic rows -->
@@ -128,14 +71,7 @@
           </select>
         </div>
 
-        <!-- CICPA -->
-        <div class="form-group">
-          <label for="cicpa">CICPA Pass Required?</label>
-          <select id="cicpa" name="cicpa" required>
-            <option value="No">No</option>
-            <option value="Yes">Yes</option>
-          </select>
-        </div>
+        <!-- CICPA REMOVED (now auto-applied by destination) -->
 
         <button type="submit" class="btn-generate">Generate</button>
       </form>
@@ -160,6 +96,10 @@
     </div>
   </div>
 
+  <!-- Pass truck list to JS; chatbot code loads it -->
+  <script>
+    window.TRUCK_TYPES = {{ truck_types|tojson }};
+  </script>
   <script src="{{ url_for('static', filename='chatbot.js') }}"></script>
 </body>
 </html>
