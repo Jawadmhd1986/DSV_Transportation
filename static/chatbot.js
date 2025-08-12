@@ -110,18 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return row;
   }
 
-  if (truckTypeContainer && addTruckTypeBtn) {
-    addTruckTypeBtn.addEventListener('click', () => {
-      truckTypeContainer.appendChild(createTruckRow()));
-      // after adding, make sure new select is filtered if a CICPA city is selected
-      setTimeout(applyFilterToAllRows, 0);
-    });
-    // initial row
-    truckTypeContainer.appendChild(createTruckRow());
-  }
-
   // ---------------- CICPA filtering add-on ----------------
-  const destSel      = document.getElementById('destination');
+  const destSel = document.getElementById('destination');
 
   const CICPA_CITY_SET = new Set(
     (window.CICPA_CITIES || []).map(s =>
@@ -173,10 +163,20 @@ document.addEventListener('DOMContentLoaded', () => {
       .forEach(applyFilterToRow);
   }
 
+  // Add-row button — **fixed syntax (removed stray ')')**
+  if (truckTypeContainer && addTruckTypeBtn) {
+    addTruckTypeBtn.addEventListener('click', () => {
+      truckTypeContainer.appendChild(createTruckRow());
+      // ensure the new row respects current destination's CICPA status
+      applyFilterToAllRows();
+    });
+    // initial row
+    truckTypeContainer.appendChild(createTruckRow());
+    // apply initial filter (in case a destination is preselected)
+    applyFilterToAllRows();
+  }
+
   if (destSel) {
     destSel.addEventListener('change', applyFilterToAllRows);
   }
-
-  // Initial pass (handles preselected destination, if any)
-  applyFilterToAllRows();
 });
