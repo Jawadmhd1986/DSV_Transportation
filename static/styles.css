@@ -93,11 +93,23 @@ html,body{
 }
 .trip-options label.selected{background:var(--blue-dsv); color:#fff;}
 
-/* Truck rows */
+/* ─────────────────────────────────────────────
+   Trip Card (DSV blue box around each trip)
+   First card contains the main Trip Type toggle.
+   ───────────────────────────────────────────── */
+.trip-card{
+  border:2px solid var(--blue-dsv);
+  border-radius:14px;
+  padding:14px;
+  margin:12px 0;
+  background:#fff;
+}
+
+/* Truck rows inside each card */
 .truck-type-row{
   display:grid;
   grid-template-columns: 1fr 110px 90px; /* type | qty | clear */
-  gap:10px; margin-bottom:10px; align-items:center;
+  gap:10px; margin-bottom:10px; align-items:end;
 }
 .select-wrapper,.qty-wrapper{
   display:flex; flex-direction:column;
@@ -111,19 +123,19 @@ html,body{
   width:100%; padding:.5rem 1rem; border:1px solid var(--blue-dsv);
   border-radius:6px; font-size:1rem;
 }
+
+/* Clear button stays inside the card (no translate) */
 .truck-type-row .btn-remove{
   width:100%; text-align:center;
   background:none; border:1px solid var(--blue-dsv);
   color:var(--blue-dsv); font-weight:bold; font-size:.9rem;
-  cursor:pointer; padding:.5rem 0; border-radius:6px;
-  transform: translateY(16px);
+  cursor:pointer; padding:.55rem 0; border-radius:6px;
 }
 .truck-type-row .btn-remove:hover{color:#fff; background:var(--blue-dsv);}
 
-/* Separator between added trips */
+/* (Legacy) Separator – no longer used when cards are enabled, but keep harmless */
 hr.trip-separator{
-  border:0; border-top:2px solid var(--blue-dsv);
-  margin:12px 0;
+  display:none;
 }
 
 /* Add button style (kept from earlier look) */
@@ -186,4 +198,3 @@ hr.trip-separator{
     right:1rem;
   }
 }
-
