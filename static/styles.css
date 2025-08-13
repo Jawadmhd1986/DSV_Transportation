@@ -116,6 +116,7 @@ html,body{
   background:none; border:1px solid var(--blue-dsv);
   color:var(--blue-dsv); font-weight:bold; font-size:.9rem;
   cursor:pointer; padding:.5rem 0; border-radius:6px;
+  transform: translateY(16px);
 }
 .truck-type-row .btn-remove:hover{color:#fff; background:var(--blue-dsv);}
 
@@ -185,3 +186,4 @@ hr.trip-separator{
     right:1rem;
   }
 }
+
