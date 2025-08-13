@@ -122,6 +122,44 @@ document.addEventListener('DOMContentLoaded', () => {
     return destEl ? destEl.value : '';
   }
 
+  // --- Separator helpers ---
+  function makeSeparator() {
+    const hr = document.createElement('hr');
+    hr.className = 'trip-separator';
+    hr.style.border = '1px solid #cdd4e0';
+    hr.style.margin = '10px 0';
+    return hr;
+  }
+  function insertSeparatorBefore(node) {
+    // only if the node is not the very first row
+    const rows = [...truckTypeContainer.querySelectorAll('.truck-type-row')];
+    const idx = rows.indexOf(node);
+    if (idx > 0) node.parentNode.insertBefore(makeSeparator(), node);
+  }
+  function cleanupSeparators() {
+    // remove any leading separator and duplicate separators
+    const children = [...truckTypeContainer.children];
+    children.forEach((el, i) => {
+      if (el.matches('hr.trip-separator')) {
+        const prev = children[i - 1];
+        const next = children[i + 1];
+        // remove if first child OR next sibling isn't a row
+        if (i === 0 || !(next && next.classList && next.classList.contains('truck-type-row'))) {
+          el.remove();
+        }
+        // collapse consecutive <hr>
+        if (prev && prev.matches && prev.matches('hr.trip-separator')) {
+          el.remove();
+        }
+      }
+    });
+    // also make sure there is no separator before the very first row
+    const firstRow = truckTypeContainer.querySelector('.truck-type-row');
+    if (firstRow && firstRow.previousElementSibling && firstRow.previousElementSibling.matches('hr.trip-separator')) {
+      firstRow.previousElementSibling.remove();
+    }
+  }
+
   // === Row creation & first-row rules ===
   function createTruckRow(index /* 0-based */) {
     const row = document.createElement('div');
@@ -169,10 +207,13 @@ document.addEventListener('DOMContentLoaded', () => {
       row.appendChild(tripBlock);
     }
 
-    // Clear button
+    // Clear button: remove row AND its separator (if present)
     row.querySelector('.btn-remove').addEventListener('click', () => {
+      const prev = row.previousElementSibling;
       row.remove();
-      normalizeFirstRowUI(); // ensure first row keeps hidden trip, others visible
+      if (prev && prev.matches && prev.matches('hr.trip-separator')) prev.remove();
+      normalizeFirstRowUI();
+      cleanupSeparators();
     });
 
     return row;
@@ -221,9 +262,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (truckTypeContainer && addTruckTypeBtn) {
     addTruckTypeBtn.addEventListener('click', () => {
       const index = truckTypeContainer.querySelectorAll('.truck-type-row').length;
+
+      // Add separator before the new row (only if it's NOT the first)
+      if (index > 0) truckTypeContainer.appendChild(makeSeparator());
+
       const newRow = createTruckRow(index);
       truckTypeContainer.appendChild(newRow);
       normalizeFirstRowUI();
+
       // Focus the new row’s trip selector if it exists
       const tripSel = newRow.querySelector('select[name="trip_kind[]"]');
       if (tripSel) tripSel.focus();
@@ -231,6 +277,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // initial row (inherits main trip)
     truckTypeContainer.appendChild(createTruckRow(0));
+
+    // If form pre-filled with multiple rows, add separators before rows 2..N
+    const existingRows = truckTypeContainer.querySelectorAll('.truck-type-row');
+    if (existingRows.length > 1) {
+      existingRows.forEach((row, idx) => {
+        if (idx > 0) {
+          row.parentNode.insertBefore(makeSeparator(), row);
+        }
+      });
+    }
   }
 
   // Re-filter truck types when destination changes
@@ -246,5 +302,3 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
-
-
