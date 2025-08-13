@@ -315,19 +315,20 @@ def rates_debug():
 def generate_transport():
     origin         = (request.form.get("origin") or "").strip()
     destination    = (request.form.get("destination") or "").strip()
-    main_trip      = (request.form.get("trip_type") or "one_way").strip()   # radio at the top
+    main_trip      = (request.form.get("trip_type") or "one_way").strip()   # top radio
     cargo_type     = (request.form.get("cargo_type") or "general").strip().lower()
 
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
-    # NEW: per-row trip for each truck row; if missing, fall back to main_trip
-    per_row_trips = request.form.getlist("truck_trip[]") or []
+    # NOTE: this exists only for rows 2..n (first row uses main_trip)
+    per_row_trips  = request.form.getlist("trip_kind[]") or []
 
     # CICPA status for destination
     is_cicpa_city = cicpa_required_for(destination)
     cicpa_flag = " (CICPA)" if is_cicpa_city else " (Non-CICPA)"
-    allowed_display_trucks = set(RATES.get("__cicpa_trucks__") if is_cicpa_city
-                                 else RATES.get("__local_trucks__"))
+    allowed_display_trucks = set(
+        RATES.get("__cicpa_trucks__") if is_cicpa_city else RATES.get("__local_trucks__")
+    )
 
     # normalize selected trucks
     chosen_trucks = []
@@ -338,27 +339,38 @@ def generate_transport():
             qty = 0
         if qty <= 0:
             continue
+
         norm_key = None
         for k, v in TRUCK_LABELS.items():
             if v.lower() == (t_label or "").strip().lower():
                 norm_key = k
                 break
         norm_key = norm_key or norm_truck(t_label)
+
         if norm_key in TRUCK_LABELS:
             chosen_trucks.append((norm_key, qty))
 
     subtotal = DEC("0")
     per_truck_rows = []
-    label_set_for_header = []
+    header_trip_labels = []  # to compute "Mixed" vs single label
 
-    # compute using each row’s trip (falls back to main_trip)
+    # compute each row with correct trip:
+    # row 0 -> main_trip; row i>=1 -> per_row_trips[i-1] (fallback to main_trip if missing)
     for idx, (t_key, qty) in enumerate(chosen_trucks):
         label = TRUCK_LABELS[t_key]
 
-        # which trip applies to THIS row?
-        row_trip = per_row_trips[idx] if idx < len(per_row_trips) and per_row_trips[idx] in ("one_way", "back_load") else main_trip
-        label_set_for_header.append("Back Load" if row_trip == "back_load" else "One Way")
-        way_mult = DEC("2.00") if row_trip == "back_load" else DEC("1.00")
+        if idx == 0:
+            row_trip = main_trip
+        else:
+            j = idx - 1
+            row_trip = (
+                per_row_trips[j]
+                if j < len(per_row_trips) and per_row_trips[j] in ("one_way", "back_load")
+                else main_trip
+            )
+
+        header_trip_labels.append("Back Load" if row_trip == "back_load" else "One Way")
+        way_mult     = DEC("2.00") if row_trip == "back_load" else DEC("1.00")
         row_trip_tag = " (Back Load)" if row_trip == "back_load" else ""
 
         # filter by CICPA vs non-CICPA
@@ -393,12 +405,13 @@ def generate_transport():
 
     # Summary values
     truck_summary = "; ".join(f"{TRUCK_LABELS[t]} x {q}" for t, q in chosen_trucks) or "N/A"
-    # Header shows Mixed if different row trips were chosen
-    if not label_set_for_header:
-        trip_label = "One Way" if main_trip == "one_way" else "Back Load"
+
+    # Header trip label: if mixed row trips, show "Mixed"
+    if header_trip_labels:
+        unique_labels = set(header_trip_labels)
+        trip_label = unique_labels.pop() if len(unique_labels) == 1 else "Mixed"
     else:
-        trip_label = list({lbl for lbl in label_set_for_header})
-        trip_label = trip_label[0] if len(trip_label) == 1 else "Mixed"
+        trip_label = "One Way" if main_trip == "one_way" else "Back Load"
 
     route_str = f"{origin} \u2192 {destination}{cicpa_flag}" if (origin and destination) else "N/A"
 
@@ -406,6 +419,7 @@ def generate_transport():
     if not os.path.exists(tpl_path):
         return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
 
+    # Fill the template
     doc = Document(tpl_path)
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
@@ -445,6 +459,7 @@ def generate_transport():
     buf.seek(0)
     download_name = f"Transport_Quotation_{(origin or 'Origin').replace(' ','')}To{(destination or 'Destination').replace(' ','')}.docx"
     return send_file(buf, as_attachment=True, download_name=download_name)
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
