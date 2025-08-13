@@ -74,15 +74,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---------------- Transport UI ----------------
+  const truckTypeContainer = document.getElementById('truckTypeContainer');
+  const addTruckTypeBtn    = document.getElementById('add-truck-type');
 
-  // Global Trip radios
+  // Global trip toggle (top of form)
   const tripRadios = document.querySelectorAll('input[name="trip_type"]');
+  tripRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
+      const label = radio.closest('label');
+      if (label) label.classList.add('selected');
+      // keep row-1 (first row) in sync with the main trip
+      syncFirstRowHiddenTrip();
+    });
+  });
+
   function getGlobalTrip() {
     const checked = document.querySelector('input[name="trip_type"]:checked');
     return checked ? checked.value : 'one_way';
   }
 
-  // CICPA filtering (arrays provided by the template)
+  // CICPA filtering support (arrays injected by template in HTML)
   const CICPA_CITIES = (window.CICPA_CITIES || []).map(s => (s || '').toLowerCase());
   const LOCAL_TRUCKS = window.LOCAL_TRUCKS || [];
   const CICPA_TRUCKS = window.CICPA_TRUCKS || [];
@@ -93,31 +105,31 @@ document.addEventListener('DOMContentLoaded', () => {
   function truckListForCity(city) {
     return isCicpaCity(city) ? CICPA_TRUCKS : LOCAL_TRUCKS;
   }
+
   function buildOptions(list, current) {
     const opts = ['<option value="">— Select Truck Type —</option>']
       .concat(list.map(t => `<option value="${t}">${t}</option>`))
       .join('');
+    // if current still allowed, keep it selected
     const wrap = document.createElement('select');
     wrap.innerHTML = opts;
     if (current && list.includes(current)) wrap.value = current;
     return wrap.innerHTML;
   }
 
-  const truckTypeContainer = document.getElementById('truckTypeContainer');
-  const addTruckTypeBtn    = document.getElementById('add-truck-type');
-  const destEl             = document.getElementById('destination');
-
   function currentCity() {
-    return destEl ? destEl.value : '';
+    const d = document.getElementById('destination');
+    return d ? d.value : '';
   }
 
-  // Create a truck row. `independentTrip` = true for rows >= 2; false for the first row.
-  function createTruckRow(independentTrip) {
+  function createTruckRow(index /* 0-based */) {
     const row = document.createElement('div');
     row.className = 'truck-type-row';
+
     const allowed = truckListForCity(currentCity());
     const options = buildOptions(allowed, null);
 
+    // Common part (type / qty / clear)
     row.innerHTML = `
       <div class="select-wrapper">
         <label class="inline-label">Type</label>
@@ -130,81 +142,104 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
 
       <button type="button" class="btn-remove" title="Remove Truck Type">Clear</button>
+    `;
 
-      <div class="select-wrapper" style="grid-column: 1 / span 2;">
+    // Trip control:
+    //   - Row 0: hidden input only (inherits main trip)
+    //   - Row 1+ : visible dropdown so user can choose
+    if (index === 0) {
+      const hidden = document.createElement('input');
+      hidden.type  = 'hidden';
+      hidden.name  = 'trip_kind[]';
+      hidden.className = 'trip-kind-hidden';
+      hidden.value = getGlobalTrip();
+      row.appendChild(hidden);
+    } else {
+      const tripBlock = document.createElement('div');
+      tripBlock.className = 'select-wrapper';
+      tripBlock.style.gridColumn = '1 / span 2';
+      tripBlock.innerHTML = `
         <label class="inline-label">Trip</label>
         <select name="trip_kind[]" required>
           <option value="one_way">One Way</option>
           <option value="back_load">Back Load</option>
         </select>
-      </div>
-    `;
+      `;
+      tripBlock.querySelector('select').value = getGlobalTrip();
+      row.appendChild(tripBlock);
+    }
 
-    // Trip select
-    const tripSel = row.querySelector('select[name="trip_kind[]"]');
-    tripSel.value = getGlobalTrip();          // default from main radios
-    tripSel.dataset.userSet = '0';
-    tripSel.addEventListener('change', () => { tripSel.dataset.userSet = '1'; });
-
-    // Remove handler
+    // Clear button
     row.querySelector('.btn-remove').addEventListener('click', () => {
       row.remove();
-      applyFirstRowLock(); // keep the "first row inherits main trip" rule
+      normalizeFirstRowUI(); // ensure first row stays hidden-trip
     });
-
-    // If this row is the first row (independentTrip=false), lock it right away.
-    if (!independentTrip) {
-      lockRowTripToGlobal(row);
-    }
 
     return row;
   }
 
-  // Lock a row's Trip to the main Trip Type:
-  //  - disable the select (disabled elements aren't submitted)
-  //  - mirror its value to a hidden input named trip_kind[] so the server receives it
-  function lockRowTripToGlobal(row) {
-    const sel = row.querySelector('select[name="trip_kind[]"]');
-    if (!sel) return;
-    sel.value = getGlobalTrip();
-    sel.disabled = true;
+  // Ensure the first row has hidden trip (no visible dropdown).
+  // If user deleted the first row, upgrade the new first row accordingly.
+  function normalizeFirstRowUI() {
+    const rows = [...truckTypeContainer.querySelectorAll('.truck-type-row')];
+    rows.forEach((row, i) => {
+      const existingSelect = row.querySelector('select[name="trip_kind[]"]');
+      const existingHidden = row.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
 
-    let hidden = row.querySelector('input.trip-hidden[name="trip_kind[]"]');
-    if (!hidden) {
-      hidden = document.createElement('input');
-      hidden.type  = 'hidden';
-      hidden.name  = 'trip_kind[]';
-      hidden.className = 'trip-hidden';
-      // append after the select so ordering stays first-row, then others
-      sel.parentElement.appendChild(hidden);
-    }
-    hidden.value = sel.value;
-  }
-
-  // Unlock a row (make Trip independent) and remove any hidden mirror
-  function unlockRowTrip(row) {
-    const sel = row.querySelector('select[name="trip_kind[]"]');
-    if (sel) {
-      sel.disabled = false;
-      if (sel.dataset.userSet !== '1') sel.value = getGlobalTrip();
-    }
-    const hidden = row.querySelector('input.trip-hidden[name="trip_kind[]"]');
-    if (hidden) hidden.remove();
-  }
-
-  // Ensure the first visible row is locked to the main Trip; all others independent
-  function applyFirstRowLock() {
-    const rows = [...document.querySelectorAll('#truckTypeContainer .truck-type-row')];
-    rows.forEach((row, idx) => {
-      if (idx === 0) {
-        lockRowTripToGlobal(row);
+      if (i === 0) {
+        // must be hidden
+        if (existingSelect) existingSelect.closest('.select-wrapper')?.remove();
+        if (!existingHidden) {
+          const hidden = document.createElement('input');
+          hidden.type = 'hidden';
+          hidden.name = 'trip_kind[]';
+          hidden.className = 'trip-kind-hidden';
+          hidden.value = getGlobalTrip();
+          row.appendChild(hidden);
+        } else {
+          existingHidden.value = getGlobalTrip();
+        }
       } else {
-        unlockRowTrip(row);
+        // must be visible select
+        if (existingHidden) existingHidden.remove();
+        if (!existingSelect) {
+          const tripBlock = document.createElement('div');
+          tripBlock.className = 'select-wrapper';
+          tripBlock.style.gridColumn = '1 / span 2';
+          tripBlock.innerHTML = `
+            <label class="inline-label">Trip</label>
+            <select name="trip_kind[]" required>
+              <option value="one_way">One Way</option>
+              <option value="back_load">Back Load</option>
+            </select>
+          `;
+          tripBlock.querySelector('select').value = getGlobalTrip();
+          row.appendChild(tripBlock);
+        }
       }
     });
   }
 
+  function syncFirstRowHiddenTrip() {
+    const first = truckTypeContainer.querySelector('.truck-type-row');
+    if (!first) return;
+    const hidden = first.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
+    if (hidden) hidden.value = getGlobalTrip();
+  }
+
+  // Add-row button
+  if (truckTypeContainer && addTruckTypeBtn) {
+    addTruckTypeBtn.addEventListener('click', () => {
+      const index = truckTypeContainer.querySelectorAll('.truck-type-row').length;
+      truckTypeContainer.appendChild(createTruckRow(index));
+      normalizeFirstRowUI();
+    });
+    // initial row: index 0
+    truckTypeContainer.appendChild(createTruckRow(0));
+  }
+
   // Re-filter truck type options when destination changes
+  const destEl = document.getElementById('destination');
   if (destEl) {
     destEl.addEventListener('change', () => {
       const allowed = truckListForCity(currentCity());
@@ -216,25 +251,4 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   }
-
-  // Add new rows (independent trip)
-  if (truckTypeContainer && addTruckTypeBtn) {
-    addTruckTypeBtn.addEventListener('click', () => {
-      truckTypeContainer.appendChild(createTruckRow(true));
-      applyFirstRowLock();
-    });
-    // initial row (locked to main trip)
-    truckTypeContainer.appendChild(createTruckRow(false));
-    applyFirstRowLock();
-  }
-
-  // When main Trip Type changes, update ONLY the first row (locked one)
-  tripRadios.forEach(radio => {
-    radio.addEventListener('change', () => {
-      document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
-      const label = radio.closest('label');
-      if (label) label.classList.add('selected');
-      applyFirstRowLock(); // pushes new main value into the locked first row + hidden mirror
-    });
-  });
 });
