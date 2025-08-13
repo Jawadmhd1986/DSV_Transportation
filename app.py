@@ -34,20 +34,24 @@ def norm_city(s: str) -> str:
     return s
 
 # canonical pickups we expose in the UI
+# ✅ FIX: show "Khalifa Port" (not "Khalifa Port/Taweelah") in the pickup list
 PICKUP_LABELS = {
     "mussafah": "Mussafah",
     "auh airport": "AUH Airport",
-    "khalifa port/taweelah": "Khalifa Port/Taweelah",
+    "khalifa port": "Khalifa Port",
 }
-# map any sheet variants to these 3
+
+# map any sheet variants to these allowed 3 pickups
+# (we still read "Khalifa Port/Taweelah" from the rates sheet, but it’s a DESTINATION)
 PICKUP_ALIASES = {
     "mussafah": "mussafah",
     "auh airport": "auh airport",
     "abu dhabi airport": "auh airport",
     "airport": "auh airport",
-    "khalifa port": "khalifa port/taweelah",
-    "khalifa port/taweelah": "khalifa port/taweelah",
-    "taweelah": "khalifa port/taweelah",
+    "khalifa port": "khalifa port",
+    "taweelah": "khalifa port",           # treat Taweelah pickup as Khalifa Port pickup
+    "kizad": "khalifa port",              # common shorthand around KP area
+    "khalifa port/taweelah": "khalifa port",
 }
 
 # Only these truck types are valid
@@ -285,7 +289,8 @@ def emphasize_row(row, font_pt=12):
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/")
 def home():
-    origins = [PICKUP_LABELS["mussafah"], PICKUP_LABELS["auh airport"], PICKUP_LABELS["khalifa port/taweelah"]]
+    # ✅ Origins now display "Khalifa Port"
+    origins = [PICKUP_LABELS["mussafah"], PICKUP_LABELS["auh airport"], PICKUP_LABELS["khalifa port"]]
     destinations = RATES.get("__cities_display__", [])
     # default list (union) so something shows before a city is chosen
     default_trucks = sorted(set(RATES.get("__local_trucks__") or []) | set(RATES.get("__cicpa_trucks__") or []))
@@ -308,23 +313,14 @@ def generate_transport():
 
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
-    # Per-row trip drop-downs (if user only added them for additional rows,
-    # this list will be shorter than the number of truck rows).
     per_row_trips_raw = request.form.getlist("trip_kind[]") or []
 
-    # ──────────────────────────────────────────────────────────────────────
-    # Normalize per-row trips and build a list the same length as trucks.
-    # If we have fewer trip selectors than truck rows, assume they belong
-    # to the LAST N rows; the first rows use the main trip.
-    # Example: 2 trucks, 1 per-row trip posted -> [main_trip, posted_trip]
-    # ──────────────────────────────────────────────────────────────────────
     def norm_trip(v):
         v = (v or "").strip().lower()
         return v if v in ("one_way", "back_load") else main_trip
 
     per_row_trips = [norm_trip(v) for v in per_row_trips_raw]
 
-    # normalize selected trucks into keys + qty
     chosen_trucks = []
     for t_label, q in zip(truck_types, truck_qty_list):
         try:
@@ -343,9 +339,6 @@ def generate_transport():
         if norm_key in TRUCK_LABELS:
             chosen_trucks.append((norm_key, qty))
 
-    # Build a trip list that aligns 1:1 with chosen_trucks.
-    # If counts match, map directly. If not, assume posted trips
-    # are for the last N rows; the first rows use main_trip.
     N = len(chosen_trucks)
     M = len(per_row_trips)
     if M >= N:
@@ -354,7 +347,6 @@ def generate_transport():
         prefix = [main_trip] * (N - M)
         row_trip_list = prefix + per_row_trips
 
-    # CICPA flags / allowed trucks
     is_cicpa_city = cicpa_required_for(destination)
     cicpa_flag = " (CICPA)" if is_cicpa_city else " (Non-CICPA)"
     allowed_display_trucks = set(
@@ -367,13 +359,10 @@ def generate_transport():
 
     for (t_key, qty), row_trip in zip(chosen_trucks, row_trip_list):
         label = TRUCK_LABELS[t_key]
-
-        # per-row trip application
         way_mult = DEC("2.00") if row_trip == "back_load" else DEC("1.00")
         row_trip_tag = " (Back Load)" if row_trip == "back_load" else ""
         header_trip_labels.append("Back Load" if row_trip == "back_load" else "One Way")
 
-        # CICPA truck filtering
         if label not in allowed_display_trucks:
             per_truck_rows.append(
                 (f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (Not available for this selection)",
@@ -401,7 +390,6 @@ def generate_transport():
 
     grand_total = subtotal
 
-    # Header “Trip Type”: if all rows share the same label, show it; otherwise “Mixed”
     if not header_trip_labels:
         trip_label_for_header = "One Way" if main_trip == "one_way" else "Back Load"
     else:
@@ -453,7 +441,6 @@ def generate_transport():
     buf.seek(0)
     download_name = f"Transport_Quotation_{(origin or 'Origin').replace(' ','')}To{(destination or 'Destination').replace(' ','')}.docx"
     return send_file(buf, as_attachment=True, download_name=download_name)
-
 
 @app.route("/chat", methods=["POST"])
 def chat():
