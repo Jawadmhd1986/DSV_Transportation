@@ -299,18 +299,6 @@ def home():
         cicpa_trucks=RATES.get("__cicpa_trucks__", []),
     )
 
-@app.route("/rates_debug")
-def rates_debug():
-    o = request.args.get("from", "")
-    d = request.args.get("to", "")
-    t = request.args.get("truck", "")
-    c = (request.args.get("cargo", "general") or "general").lower()
-    val = lookup_rate(o, d, t, c)
-    return jsonify({
-        "query": {"from": o, "to": d, "truck": t, "cargo": c},
-        "result": (float(val) if val is not None else None),
-        "cicpa_required": cicpa_required_for(d)
-    })
 @app.route("/generate_transport", methods=["POST"])
 def generate_transport():
     origin         = (request.form.get("origin") or "").strip()
@@ -320,17 +308,23 @@ def generate_transport():
 
     truck_types    = request.form.getlist("truck_type[]") or []
     truck_qty_list = request.form.getlist("truck_qty[]") or []
-    # NOTE: this exists only for rows 2..n (first row uses main_trip)
-    per_row_trips  = request.form.getlist("trip_kind[]") or []
+    # Per-row trip drop-downs (if user only added them for additional rows,
+    # this list will be shorter than the number of truck rows).
+    per_row_trips_raw = request.form.getlist("trip_kind[]") or []
 
-    # CICPA status for destination
-    is_cicpa_city = cicpa_required_for(destination)
-    cicpa_flag = " (CICPA)" if is_cicpa_city else " (Non-CICPA)"
-    allowed_display_trucks = set(
-        RATES.get("__cicpa_trucks__") if is_cicpa_city else RATES.get("__local_trucks__")
-    )
+    # ──────────────────────────────────────────────────────────────────────
+    # Normalize per-row trips and build a list the same length as trucks.
+    # If we have fewer trip selectors than truck rows, assume they belong
+    # to the LAST N rows; the first rows use the main trip.
+    # Example: 2 trucks, 1 per-row trip posted -> [main_trip, posted_trip]
+    # ──────────────────────────────────────────────────────────────────────
+    def norm_trip(v):
+        v = (v or "").strip().lower()
+        return v if v in ("one_way", "back_load") else main_trip
 
-    # normalize selected trucks
+    per_row_trips = [norm_trip(v) for v in per_row_trips_raw]
+
+    # normalize selected trucks into keys + qty
     chosen_trucks = []
     for t_label, q in zip(truck_types, truck_qty_list):
         try:
@@ -346,49 +340,53 @@ def generate_transport():
                 norm_key = k
                 break
         norm_key = norm_key or norm_truck(t_label)
-
         if norm_key in TRUCK_LABELS:
             chosen_trucks.append((norm_key, qty))
 
+    # Build a trip list that aligns 1:1 with chosen_trucks.
+    # If counts match, map directly. If not, assume posted trips
+    # are for the last N rows; the first rows use main_trip.
+    N = len(chosen_trucks)
+    M = len(per_row_trips)
+    if M >= N:
+        row_trip_list = per_row_trips[:N]
+    else:
+        prefix = [main_trip] * (N - M)
+        row_trip_list = prefix + per_row_trips
+
+    # CICPA flags / allowed trucks
+    is_cicpa_city = cicpa_required_for(destination)
+    cicpa_flag = " (CICPA)" if is_cicpa_city else " (Non-CICPA)"
+    allowed_display_trucks = set(
+        RATES.get("__cicpa_trucks__") if is_cicpa_city else RATES.get("__local_trucks__")
+    )
+
     subtotal = DEC("0")
     per_truck_rows = []
-    header_trip_labels = []  # to compute "Mixed" vs single label
+    header_trip_labels = []
 
-    # compute each row with correct trip:
-    # row 0 -> main_trip; row i>=1 -> per_row_trips[i-1] (fallback to main_trip if missing)
-    for idx, (t_key, qty) in enumerate(chosen_trucks):
+    for (t_key, qty), row_trip in zip(chosen_trucks, row_trip_list):
         label = TRUCK_LABELS[t_key]
 
-        if idx == 0:
-            row_trip = main_trip
-        else:
-            j = idx - 1
-            row_trip = (
-                per_row_trips[j]
-                if j < len(per_row_trips) and per_row_trips[j] in ("one_way", "back_load")
-                else main_trip
-            )
-
-        header_trip_labels.append("Back Load" if row_trip == "back_load" else "One Way")
-        way_mult     = DEC("2.00") if row_trip == "back_load" else DEC("1.00")
+        # per-row trip application
+        way_mult = DEC("2.00") if row_trip == "back_load" else DEC("1.00")
         row_trip_tag = " (Back Load)" if row_trip == "back_load" else ""
+        header_trip_labels.append("Back Load" if row_trip == "back_load" else "One Way")
 
-        # filter by CICPA vs non-CICPA
+        # CICPA truck filtering
         if label not in allowed_display_trucks:
-            per_truck_rows.append((
-                f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (Not available for this selection)",
-                "",
-                ""
-            ))
+            per_truck_rows.append(
+                (f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (Not available for this selection)",
+                 "", "")
+            )
             continue
 
         base_rate = lookup_rate(origin, destination, label, cargo_type)
         if base_rate is None:
-            per_truck_rows.append((
-                f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (No rate found)",
-                "",
-                ""
-            ))
+            per_truck_rows.append(
+                (f"{label} x {qty} — {origin} → {destination}{cicpa_flag} (No rate found)",
+                 "", "")
+            )
             continue
 
         unit_per_truck = base_rate * way_mult
@@ -403,23 +401,20 @@ def generate_transport():
 
     grand_total = subtotal
 
-    # Summary values
-    truck_summary = "; ".join(f"{TRUCK_LABELS[t]} x {q}" for t, q in chosen_trucks) or "N/A"
-
-    # Header trip label: if mixed row trips, show "Mixed"
-    if header_trip_labels:
-        unique_labels = set(header_trip_labels)
-        trip_label = unique_labels.pop() if len(unique_labels) == 1 else "Mixed"
+    # Header “Trip Type”: if all rows share the same label, show it; otherwise “Mixed”
+    if not header_trip_labels:
+        trip_label_for_header = "One Way" if main_trip == "one_way" else "Back Load"
     else:
-        trip_label = "One Way" if main_trip == "one_way" else "Back Load"
+        uniq = set(header_trip_labels)
+        trip_label_for_header = uniq.pop() if len(uniq) == 1 else "Mixed"
 
+    truck_summary = "; ".join(f"{TRUCK_LABELS[t]} x {q}" for t, q in chosen_trucks) or "N/A"
     route_str = f"{origin} \u2192 {destination}{cicpa_flag}" if (origin and destination) else "N/A"
 
     tpl_path = os.path.join("templates", "TransportQuotation.docx")
     if not os.path.exists(tpl_path):
         return jsonify({"error": "TransportQuotation.docx not found under templates/"}), 500
 
-    # Fill the template
     doc = Document(tpl_path)
     placeholders = {
         "{{TODAY_DATE}}": datetime.today().strftime("%d %b %Y"),
@@ -428,7 +423,7 @@ def generate_transport():
         "{{TRUCK_TYPE}}": truck_summary,
         "{{GENERAL}}":    "General Cargo" if cargo_type == "general" else "",
         "{{CHEMICAL}}":   "Chemical Load" if cargo_type == "chemical" else "",
-        "{{TRIP_TYPE}}":  trip_label,
+        "{{TRIP_TYPE}}":  trip_label_for_header,
         "{{CICPA}}":      "Yes" if is_cicpa_city else "No",
         "{{ROUTE}}":      route_str,
         "{{UNIT_RATE}}":  money(subtotal),
@@ -436,7 +431,6 @@ def generate_transport():
     }
     replace_everywhere(doc, placeholders)
 
-    # Details table: item lines + GRAND TOTAL
     table = find_details_table(doc)
     if table:
         clear_table_body(table)
@@ -459,6 +453,7 @@ def generate_transport():
     buf.seek(0)
     download_name = f"Transport_Quotation_{(origin or 'Origin').replace(' ','')}To{(destination or 'Destination').replace(' ','')}.docx"
     return send_file(buf, as_attachment=True, download_name=download_name)
+
 
 
 @app.route("/chat", methods=["POST"])
