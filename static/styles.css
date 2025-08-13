@@ -53,14 +53,17 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:Arial,Helve
   margin-bottom:10px;
   align-items:center;
 }
+
 .truck-type-row .select-wrapper + .select-wrapper {
   margin-top: 6px;
-  
+}
+
 .select-wrapper,
 .qty-wrapper {
   display:flex;
   flex-direction:column;
 }
+
 .select-wrapper label,
 .qty-wrapper label{
   font-weight:bold;
@@ -129,4 +132,5 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:Arial,Helve
 }
  
  
+
 
