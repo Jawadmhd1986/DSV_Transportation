@@ -213,6 +213,11 @@ html,body{
 #chat-send{background:var(--blue-dsv); color:#fff; border:none; padding:0 1rem; cursor:pointer; transition:background .2s;}
 #chat-send:hover{background:var(--blue-dsv-light);}
 
+/* Hide Clear button in FIRST trip card only */
+.trip-card:first-child .btn-remove{
+  display:none;
+}
+
 /* Mobile tweaks */
 @media (max-width:480px){
   .dsv-logo{ width:120px; }
