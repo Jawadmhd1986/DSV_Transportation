@@ -75,14 +75,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------------- Transport UI ----------------
 
+  const truckTypeContainer = document.getElementById('truckTypeContainer');
+  const addTruckTypeBtn    = document.getElementById('add-truck-type');
+  const destEl             = document.getElementById('destination');
+  const tripTypeGroup      = document.getElementById('tripTypeGroup'); // contains label + .trip-options
+
   // Main trip toggle (top of form)
   const tripRadios = document.querySelectorAll('input[name="trip_type"]');
   tripRadios.forEach(radio => {
     radio.addEventListener('change', () => {
       document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
-      const label = radio.closest('label');
-      if (label) label.classList.add('selected');
-      // keep first row (only) in sync with main trip
+      const label = radio.closest('label'); if (label) label.classList.add('selected');
       normalizeFirstRowUI();
     });
   });
@@ -92,75 +95,32 @@ document.addEventListener('DOMContentLoaded', () => {
     return checked ? checked.value : 'one_way';
   }
 
-  // CICPA filtering support (arrays injected by the template)
+  // CICPA filtering support (arrays injected by template)
   const CICPA_CITIES = (window.CICPA_CITIES || []).map(s => (s || '').toLowerCase());
   const LOCAL_TRUCKS = window.LOCAL_TRUCKS || [];
   const CICPA_TRUCKS = window.CICPA_TRUCKS || [];
+  function isCicpaCity(city){ return !!city && CICPA_CITIES.includes(String(city).toLowerCase().trim()); }
+  function truckListForCity(city){ return isCicpaCity(city) ? CICPA_TRUCKS : LOCAL_TRUCKS; }
 
-  function isCicpaCity(city) {
-    return !!city && CICPA_CITIES.includes(String(city).toLowerCase().trim());
-  }
-  function truckListForCity(city) {
-    return isCicpaCity(city) ? CICPA_TRUCKS : LOCAL_TRUCKS;
-  }
   function buildOptions(list, current) {
     const opts = ['<option value="">— Select Truck Type —</option>']
       .concat(list.map(t => `<option value="${t}">${t}</option>`))
       .join('');
-    // rebuild but keep current if still allowed
     const wrap = document.createElement('select');
     wrap.innerHTML = opts;
     if (current && list.includes(current)) wrap.value = current;
     return wrap.innerHTML;
   }
 
-  const truckTypeContainer = document.getElementById('truckTypeContainer');
-  const addTruckTypeBtn    = document.getElementById('add-truck-type');
-  const destEl             = document.getElementById('destination');
+  function currentCity(){ return destEl ? destEl.value : ''; }
 
-  function currentCity() {
-    return destEl ? destEl.value : '';
-  }
-
-  // --- Separator helpers ---
-  function makeSeparator() {
-    const hr = document.createElement('hr');
-    hr.className = 'trip-separator';
-    hr.style.border = '1px solid #002664';
-    hr.style.margin = '10px 0';
-    return hr;
-  }
-  function insertSeparatorBefore(node) {
-    // only if the node is not the very first row
-    const rows = [...truckTypeContainer.querySelectorAll('.truck-type-row')];
-    const idx = rows.indexOf(node);
-    if (idx > 0) node.parentNode.insertBefore(makeSeparator(), node);
-  }
-  function cleanupSeparators() {
-    // remove any leading separator and duplicate separators
-    const children = [...truckTypeContainer.children];
-    children.forEach((el, i) => {
-      if (el.matches('hr.trip-separator')) {
-        const prev = children[i - 1];
-        const next = children[i + 1];
-        // remove if first child OR next sibling isn't a row
-        if (i === 0 || !(next && next.classList && next.classList.contains('truck-type-row'))) {
-          el.remove();
-        }
-        // collapse consecutive <hr>
-        if (prev && prev.matches && prev.matches('hr.trip-separator')) {
-          el.remove();
-        }
-      }
-    });
-    // also make sure there is no separator before the very first row
-    const firstRow = truckTypeContainer.querySelector('.truck-type-row');
-    if (firstRow && firstRow.previousElementSibling && firstRow.previousElementSibling.matches('hr.trip-separator')) {
-      firstRow.previousElementSibling.remove();
-    }
+  // ---------- Trip Card helpers ----------
+  function makeCard() {
+    const card = document.createElement('div');
+    card.className = 'trip-card';
+    return card;
   }
 
-  // === Row creation & first-row rules ===
   function createTruckRow(index /* 0-based */) {
     const row = document.createElement('div');
     row.className = 'truck-type-row';
@@ -168,7 +128,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const allowed = truckListForCity(currentCity());
     const options = buildOptions(allowed, null);
 
-    // Type / Qty / Clear
     row.innerHTML = `
       <div class="select-wrapper">
         <label class="inline-label">Type</label>
@@ -195,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Additional rows get their own visible trip selector
       const tripBlock = document.createElement('div');
       tripBlock.className = 'select-wrapper';
-      tripBlock.style.gridColumn = '1 / span 2';
+      tripBlock.style.gridColumn = '1 / span 3';
       tripBlock.innerHTML = `
         <label class="inline-label">Trip Type</label>
         <select name="trip_kind[]" required>
@@ -207,99 +166,75 @@ document.addEventListener('DOMContentLoaded', () => {
       row.appendChild(tripBlock);
     }
 
-    // Clear button: remove row AND its separator (if present)
-    row.querySelector('.btn-remove').addEventListener('click', () => {
-      const prev = row.previousElementSibling;
-      row.remove();
-      if (prev && prev.matches && prev.matches('hr.trip-separator')) prev.remove();
+    // Clear button removes the WHOLE CARD that owns this row
+    row.querySelector('.btn-remove').addEventListener('click', (e) => {
+      const card = e.currentTarget.closest('.trip-card');
+      if (card) card.remove();
       normalizeFirstRowUI();
-      cleanupSeparators();
     });
 
     return row;
   }
 
   function normalizeFirstRowUI() {
-    const rows = [...truckTypeContainer.querySelectorAll('.truck-type-row')];
-    rows.forEach((row, i) => {
-      const selectTrip = row.querySelector('select[name="trip_kind[]"]');
-      const hiddenTrip = row.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
+    const cards = [...truckTypeContainer.querySelectorAll('.trip-card')];
+    const firstCard = cards[0];
+    if (!firstCard) return;
 
-      if (i === 0) {
-        // Must be hidden + synced to main
-        if (selectTrip) selectTrip.closest('.select-wrapper')?.remove();
-        if (!hiddenTrip) {
-          const hidden = document.createElement('input');
-          hidden.type = 'hidden';
-          hidden.name = 'trip_kind[]';
-          hidden.className = 'trip-kind-hidden';
-          row.appendChild(hidden);
-        }
-        const hiddenNow = row.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
-        if (hiddenNow) hiddenNow.value = getGlobalTrip();
-      } else {
-        // Must be visible dropdown
-        if (hiddenTrip) hiddenTrip.remove();
-        if (!selectTrip) {
-          const block = document.createElement('div');
-          block.className = 'select-wrapper';
-          block.style.gridColumn = '1 / span 2';
-          block.innerHTML = `
-            <label class="inline-label">Trip Type</label>
-            <select name="trip_kind[]" required>
-              <option value="one_way">One Way</option>
-              <option value="back_load">Back Load</option>
-            </select>
-          `;
-          block.querySelector('select').value = getGlobalTrip();
-          row.appendChild(block);
-        }
-      }
-    });
+    // Ensure the first card has NO visible per-row trip selector and has hidden input synced
+    const firstRow = firstCard.querySelector('.truck-type-row');
+    if (!firstRow) return;
+
+    // remove any visible select in first card
+    const sel = firstRow.querySelector('select[name="trip_kind[]"]');
+    if (sel) sel.closest('.select-wrapper')?.remove();
+
+    // ensure hidden trip input exists and is synced
+    let hidden = firstRow.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
+    if (!hidden) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'trip_kind[]';
+      hidden.className = 'trip-kind-hidden';
+      firstRow.appendChild(hidden);
+    }
+    hidden.value = getGlobalTrip();
   }
 
-  // Add-row button
+  // ---------- Initialize: build FIRST card with Trip Type + first row ----------
   if (truckTypeContainer && addTruckTypeBtn) {
+    // Create first card and move the existing Trip Type group into it
+    const firstCard = makeCard();
+    // Move the Trip Type group (label + buttons) into the first card
+    if (tripTypeGroup) firstCard.appendChild(tripTypeGroup);
+
+    // Add the first truck row
+    firstCard.appendChild(createTruckRow(0));
+    truckTypeContainer.appendChild(firstCard);
+
+    // Add-row button → new card with its own row (and visible per-row Trip Type select)
     addTruckTypeBtn.addEventListener('click', () => {
-      const index = truckTypeContainer.querySelectorAll('.truck-type-row').length;
-
-      // Add separator before the new row (only if it's NOT the first)
-      if (index > 0) truckTypeContainer.appendChild(makeSeparator());
-
-      const newRow = createTruckRow(index);
-      truckTypeContainer.appendChild(newRow);
-      normalizeFirstRowUI();
-
-      // Focus the new row’s trip selector if it exists
-      const tripSel = newRow.querySelector('select[name="trip_kind[]"]');
+      const idx = truckTypeContainer.querySelectorAll('.trip-card').length; // next index
+      const card = makeCard();
+      card.appendChild(createTruckRow(idx));
+      truckTypeContainer.appendChild(card);
+      // focus new row trip selector if available
+      const tripSel = card.querySelector('select[name="trip_kind[]"]');
       if (tripSel) tripSel.focus();
     });
-
-    // initial row (inherits main trip)
-    truckTypeContainer.appendChild(createTruckRow(0));
-
-    // If form pre-filled with multiple rows, add separators before rows 2..N
-    const existingRows = truckTypeContainer.querySelectorAll('.truck-type-row');
-    if (existingRows.length > 1) {
-      existingRows.forEach((row, idx) => {
-        if (idx > 0) {
-          row.parentNode.insertBefore(makeSeparator(), row);
-        }
-      });
-    }
   }
 
   // Re-filter truck types when destination changes
   if (destEl) {
     destEl.addEventListener('change', () => {
       const allowed = truckListForCity(currentCity());
-      truckTypeContainer.querySelectorAll('.truck-type-row').forEach(row => {
-        const typeSel = row.querySelector('select[name="truck_type[]"]');
-        if (!typeSel) return;
+      document.querySelectorAll('select[name="truck_type[]"]').forEach(typeSel => {
         const cur = typeSel.value;
         typeSel.innerHTML = buildOptions(allowed, cur);
       });
     });
   }
-});
 
+  // Keep first row synced with main radio on load
+  normalizeFirstRowUI();
+});
