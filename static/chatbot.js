@@ -74,18 +74,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---------------- Transport UI ----------------
-  const truckTypeContainer = document.getElementById('truckTypeContainer');
-  const addTruckTypeBtn    = document.getElementById('add-truck-type');
 
-  // Global trip toggle (top of form)
+  // Main trip toggle (top of form)
   const tripRadios = document.querySelectorAll('input[name="trip_type"]');
   tripRadios.forEach(radio => {
     radio.addEventListener('change', () => {
       document.querySelectorAll('.trip-options label').forEach(l => l.classList.remove('selected'));
       const label = radio.closest('label');
       if (label) label.classList.add('selected');
-      // keep row-1 (first row) in sync with the main trip
-      syncFirstRowHiddenTrip();
+      // keep first row (only) in sync with main trip
+      normalizeFirstRowUI();
     });
   });
 
@@ -94,34 +92,37 @@ document.addEventListener('DOMContentLoaded', () => {
     return checked ? checked.value : 'one_way';
   }
 
-  // CICPA filtering support (arrays injected by template in HTML)
+  // CICPA filtering support (arrays injected by the template)
   const CICPA_CITIES = (window.CICPA_CITIES || []).map(s => (s || '').toLowerCase());
   const LOCAL_TRUCKS = window.LOCAL_TRUCKS || [];
   const CICPA_TRUCKS = window.CICPA_TRUCKS || [];
 
   function isCicpaCity(city) {
-    return !!city && CICPA_CITIES.includes((city || '').toLowerCase().trim());
+    return !!city && CICPA_CITIES.includes(String(city).toLowerCase().trim());
   }
   function truckListForCity(city) {
     return isCicpaCity(city) ? CICPA_TRUCKS : LOCAL_TRUCKS;
   }
-
   function buildOptions(list, current) {
     const opts = ['<option value="">— Select Truck Type —</option>']
       .concat(list.map(t => `<option value="${t}">${t}</option>`))
       .join('');
-    // if current still allowed, keep it selected
+    // rebuild but keep current if still allowed
     const wrap = document.createElement('select');
     wrap.innerHTML = opts;
     if (current && list.includes(current)) wrap.value = current;
     return wrap.innerHTML;
   }
 
+  const truckTypeContainer = document.getElementById('truckTypeContainer');
+  const addTruckTypeBtn    = document.getElementById('add-truck-type');
+  const destEl             = document.getElementById('destination');
+
   function currentCity() {
-    const d = document.getElementById('destination');
-    return d ? d.value : '';
+    return destEl ? destEl.value : '';
   }
 
+  // === Row creation & first-row rules ===
   function createTruckRow(index /* 0-based */) {
     const row = document.createElement('div');
     row.className = 'truck-type-row';
@@ -129,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const allowed = truckListForCity(currentCity());
     const options = buildOptions(allowed, null);
 
-    // Common part (type / qty / clear)
+    // Type / Qty / Clear
     row.innerHTML = `
       <div class="select-wrapper">
         <label class="inline-label">Type</label>
@@ -144,10 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <button type="button" class="btn-remove" title="Remove Truck Type">Clear</button>
     `;
 
-    // Trip control:
-    //   - Row 0: hidden input only (inherits main trip)
-    //   - Row 1+ : visible dropdown so user can choose
     if (index === 0) {
+      // First row follows the main trip (hidden input)
       const hidden = document.createElement('input');
       hidden.type  = 'hidden';
       hidden.name  = 'trip_kind[]';
@@ -155,11 +154,12 @@ document.addEventListener('DOMContentLoaded', () => {
       hidden.value = getGlobalTrip();
       row.appendChild(hidden);
     } else {
+      // Additional rows get their own visible trip selector
       const tripBlock = document.createElement('div');
       tripBlock.className = 'select-wrapper';
       tripBlock.style.gridColumn = '1 / span 2';
       tripBlock.innerHTML = `
-        <label class="inline-label">Trip</label>
+        <label class="inline-label">Trip (this row)</label>
         <select name="trip_kind[]" required>
           <option value="one_way">One Way</option>
           <option value="back_load">Back Load</option>
@@ -172,74 +172,68 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear button
     row.querySelector('.btn-remove').addEventListener('click', () => {
       row.remove();
-      normalizeFirstRowUI(); // ensure first row stays hidden-trip
+      normalizeFirstRowUI(); // ensure first row keeps hidden trip, others visible
     });
 
     return row;
   }
 
-  // Ensure the first row has hidden trip (no visible dropdown).
-  // If user deleted the first row, upgrade the new first row accordingly.
   function normalizeFirstRowUI() {
     const rows = [...truckTypeContainer.querySelectorAll('.truck-type-row')];
     rows.forEach((row, i) => {
-      const existingSelect = row.querySelector('select[name="trip_kind[]"]');
-      const existingHidden = row.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
+      const selectTrip = row.querySelector('select[name="trip_kind[]"]');
+      const hiddenTrip = row.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
 
       if (i === 0) {
-        // must be hidden
-        if (existingSelect) existingSelect.closest('.select-wrapper')?.remove();
-        if (!existingHidden) {
+        // Must be hidden + synced to main
+        if (selectTrip) selectTrip.closest('.select-wrapper')?.remove();
+        if (!hiddenTrip) {
           const hidden = document.createElement('input');
           hidden.type = 'hidden';
           hidden.name = 'trip_kind[]';
           hidden.className = 'trip-kind-hidden';
-          hidden.value = getGlobalTrip();
           row.appendChild(hidden);
-        } else {
-          existingHidden.value = getGlobalTrip();
         }
+        const hiddenNow = row.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
+        if (hiddenNow) hiddenNow.value = getGlobalTrip();
       } else {
-        // must be visible select
-        if (existingHidden) existingHidden.remove();
-        if (!existingSelect) {
-          const tripBlock = document.createElement('div');
-          tripBlock.className = 'select-wrapper';
-          tripBlock.style.gridColumn = '1 / span 2';
-          tripBlock.innerHTML = `
-            <label class="inline-label">Trip</label>
+        // Must be visible dropdown
+        if (hiddenTrip) hiddenTrip.remove();
+        if (!selectTrip) {
+          const block = document.createElement('div');
+          block.className = 'select-wrapper';
+          block.style.gridColumn = '1 / span 2';
+          block.innerHTML = `
+            <label class="inline-label">Trip (this row)</label>
             <select name="trip_kind[]" required>
               <option value="one_way">One Way</option>
               <option value="back_load">Back Load</option>
             </select>
           `;
-          tripBlock.querySelector('select').value = getGlobalTrip();
-          row.appendChild(tripBlock);
+          block.querySelector('select').value = getGlobalTrip();
+          row.appendChild(block);
         }
       }
     });
-  }
-
-  function syncFirstRowHiddenTrip() {
-    const first = truckTypeContainer.querySelector('.truck-type-row');
-    if (!first) return;
-    const hidden = first.querySelector('input.trip-kind-hidden[name="trip_kind[]"]');
-    if (hidden) hidden.value = getGlobalTrip();
   }
 
   // Add-row button
   if (truckTypeContainer && addTruckTypeBtn) {
     addTruckTypeBtn.addEventListener('click', () => {
       const index = truckTypeContainer.querySelectorAll('.truck-type-row').length;
-      truckTypeContainer.appendChild(createTruckRow(index));
+      const newRow = createTruckRow(index);
+      truckTypeContainer.appendChild(newRow);
       normalizeFirstRowUI();
+      // Focus the new row’s trip selector if it exists
+      const tripSel = newRow.querySelector('select[name="trip_kind[]"]');
+      if (tripSel) tripSel.focus();
     });
-    // initial row: index 0
+
+    // initial row (inherits main trip)
     truckTypeContainer.appendChild(createTruckRow(0));
   }
 
-  // Re-filter truck type options when destination changes
-  const destEl = document.getElementById('destination');
+  // Re-filter truck types when destination changes
   if (destEl) {
     destEl.addEventListener('change', () => {
       const allowed = truckListForCity(currentCity());
