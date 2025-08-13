@@ -204,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
           block.className = 'select-wrapper';
           block.style.gridColumn = '1 / span 2';
           block.innerHTML = `
-            <label class="inline-label">Trip (this row)</label>
+            <label class="inline-label">Trip Type</label>
             <select name="trip_kind[]" required>
               <option value="one_way">One Way</option>
               <option value="back_load">Back Load</option>
@@ -246,4 +246,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
 
