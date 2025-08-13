@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <!-- Floating DSV logo (stays outside the card) -->
+  <!-- Floating DSV logo -->
   <img src="{{ url_for('static', filename='dsv_logo.png') }}" alt="DSV Logo" class="dsv-logo" />
 
   <section class="quote-section">
@@ -39,7 +39,7 @@
           </div>
         </div>
 
-        <!-- Trip Type (will be moved INSIDE the first box by JS) -->
+        <!-- Trip Type (wrap inside first trip card via JS) -->
         <div id="tripTypeGroup" class="form-group">
           <label>Trip Type</label>
           <div class="trip-options">
@@ -54,14 +54,16 @@
           </div>
         </div>
 
-        <!-- Truck Types heading + cards container -->
+        <!-- Truck Types dynamic cards -->
         <div class="form-group">
           <label>Truck Types</label>
-
-          <!-- JS will create boxes (.trip-card) inside here -->
           <div id="truckTypeContainer"></div>
 
-          <button type="button" id="add-truck-type" class="btn-add">+ Add Truck Type</button>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button type="button" id="add-truck-type" class="btn-add">+ Add Truck Type</button>
+            <!-- reserved spot for future “Add From/To” button -->
+            <!-- <button type="button" id="add-route" class="btn-add">+ Add From / To</button> -->
+          </div>
         </div>
 
         <!-- Cargo Type -->
