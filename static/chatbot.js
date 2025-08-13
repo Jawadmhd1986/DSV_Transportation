@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function makeSeparator() {
     const hr = document.createElement('hr');
     hr.className = 'trip-separator';
-    hr.style.border = '1px solid #cdd4e0';
+    hr.style.border = '1px solid #002664';
     hr.style.margin = '10px 0';
     return hr;
   }
@@ -302,3 +302,4 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
