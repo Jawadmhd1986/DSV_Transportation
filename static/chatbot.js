@@ -238,3 +238,4 @@ document.addEventListener('DOMContentLoaded', () => {
   // Keep first row synced with main radio on load
   normalizeFirstRowUI();
 });
+
