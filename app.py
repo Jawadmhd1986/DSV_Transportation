@@ -359,7 +359,7 @@ def generate_transport():
 
     for (t_key, qty), row_trip in zip(chosen_trucks, row_trip_list):
         label = TRUCK_LABELS[t_key]
-        way_mult = DEC("2.00") if row_trip == "back_load" else DEC("1.00")
+        way_mult = DEC("1.60") if row_trip == "back_load" else DEC("1.00")
         row_trip_tag = " (Back Load)" if row_trip == "back_load" else ""
         header_trip_labels.append("Back Load" if row_trip == "back_load" else "One Way")
 
