@@ -61,7 +61,7 @@ TRUCK_LABELS = {
     "flatbed": "Flatbed",
     "hazmatfb": "HazmatFB",
     "curtain trailer": "Curtain Trailer",
-    "desert truck": "desert truck",
+    "desert truck": "Desert Truck",
 }
 TRUCK_ALIASES = {
     "3t": "3tpickup", "3 ton": "3tpickup", "3 ton pickup": "3tpickup", "3tpickup": "3tpickup",
